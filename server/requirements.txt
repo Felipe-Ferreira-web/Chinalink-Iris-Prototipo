@@ -1,0 +1,10 @@
+apify-client==3.0.6
+Django==6.0.7
+djangorestframework==3.16.1
+django-cors-headers==4.7.0
+python-dotenv==1.0.1
+psycopg[binary]==3.2.10
+celery==5.4.0
+redis==5.2.1
+pytesseract==0.3.13
+Pillow==11.1.0
