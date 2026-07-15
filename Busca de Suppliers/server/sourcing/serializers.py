@@ -4,9 +4,35 @@ from .models import ProductListing, SourcingRequest, Supplier
 
 
 class SupplierSerializer(serializers.ModelSerializer):
+    contact_phone = serializers.SerializerMethodField()
+    contact_website = serializers.SerializerMethodField()
+
     class Meta:
         model = Supplier
-        fields = ['id', 'name', 'platform', 'country_code', 'status', 'created_at', 'updated_at']
+        fields = [
+            'id', 'name', 'platform', 'country_code', 'status', 'created_at',
+            'updated_at', 'contact_phone', 'contact_website',
+        ]
+
+    def _ultima_extracao(self, obj):
+        # Um fornecedor pode ter vários ProductListing (uma extração por
+        # produto aberto); pega a extração 'extraido' mais recente entre
+        # todos os produtos dele, não só de um.
+        from contacts.models import ContactExtraction
+        return (
+            ContactExtraction.objects
+            .filter(product__supplier=obj, status='extraido')
+            .order_by('-created_at')
+            .first()
+        )
+
+    def get_contact_phone(self, obj):
+        extracao = self._ultima_extracao(obj)
+        return extracao.phone if extracao else None
+
+    def get_contact_website(self, obj):
+        extracao = self._ultima_extracao(obj)
+        return extracao.company_website if extracao else None
 
 
 class ProductListingSerializer(serializers.ModelSerializer):

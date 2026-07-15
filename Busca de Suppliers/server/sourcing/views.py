@@ -50,10 +50,21 @@ class SourcingRequestViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
         return Response(serializer.data)
 
 
-class SupplierViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+class SupplierViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
+                       mixins.UpdateModelMixin, viewsets.GenericViewSet):
     queryset = Supplier.objects.all()
     serializer_class = SupplierSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        # O bot do WeChat consulta ?status=contato_extraido pra achar quem
+        # ainda precisa de contato, e faz PATCH pra contato_wechat_enviado
+        # depois de tentar, evitando reenviar pedido de amizade duplicado.
+        queryset = super().get_queryset()
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        return queryset
 
 
 class ProductListingViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

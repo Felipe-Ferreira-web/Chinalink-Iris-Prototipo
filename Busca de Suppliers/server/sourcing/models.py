@@ -25,6 +25,7 @@ class Supplier(models.Model):
     class Status(models.TextChoices):
         NOVO = 'novo', 'Novo'
         CONTATO_EXTRAIDO = 'contato_extraido', 'Contato extraído'
+        CONTATO_WECHAT_ENVIADO = 'contato_wechat_enviado', 'Contato enviado no WeChat'
         APROVADO = 'aprovado', 'Aprovado'
         REPROVADO = 'reprovado', 'Reprovado'
 
@@ -32,7 +33,7 @@ class Supplier(models.Model):
     platform = models.CharField(max_length=32, default='alibaba')
     country_code = models.CharField(max_length=8, null=True, blank=True)
     raw_data = models.JSONField(default=dict, blank=True)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NOVO)
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.NOVO)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
