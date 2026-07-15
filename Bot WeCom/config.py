@@ -26,6 +26,9 @@ class Config:
     window_name: str
     target_chat_name: str
     log_level: str
+    sourcing_server_url: str
+    wechat_welcome_message: str
+    sync_interval_seconds: float
 
 
 def load_config() -> Config:
@@ -37,6 +40,12 @@ def load_config() -> Config:
         window_name=_get("WECHAT_WINDOW_NAME", "WeChat|Weixin"),
         target_chat_name=_get("TARGET_CHAT_NAME", ""),
         log_level=_get("LOG_LEVEL", "INFO").upper(),
+        sourcing_server_url=_get("SOURCING_SERVER_URL", "http://localhost:8000"),
+        wechat_welcome_message=_get(
+            "WECHAT_WELCOME_MESSAGE",
+            "Olá! Somos da Chinalink, temos interesse nos seus produtos.",
+        ),
+        sync_interval_seconds=float(_get("SYNC_INTERVAL_SECONDS", "30")),
     )
 
 

@@ -69,6 +69,40 @@ def buscar_janela(window_name: str) -> str | None:
     return None
 
 
+def titulo_janela(window_id: str) -> str:
+    """Título (_NET_WM_NAME) da janela — usado só pra diagnóstico/aviso
+    (ex: confirmar que a janela ativa capturada é mesmo o WeChat e não o
+    terminal/IDE, ver calibrate_add_contact.py)."""
+    try:
+        saida = _run(["xprop", "-id", window_id, "_NET_WM_NAME"])
+    except subprocess.CalledProcessError:
+        return ""
+    return saida.partition("=")[2].strip().strip('"')
+
+
+def buscar_janela_por_nome(padrao: str) -> str | None:
+    """Acha uma janela pelo NOME via `xdotool search --name` — diferente de
+    `buscar_janela` (que só olha `_NET_CLIENT_LIST`, isto é, janelas
+    gerenciadas pelo window manager como top-level de verdade).
+
+    Necessário pra diálogos do WeChat tipo "Add Contacts" e "Send Friend
+    Request": são janelas de verdade (têm geometria própria, título
+    próprio), mas não aparecem em `_NET_CLIENT_LIST` — confirmado ao vivo,
+    o método antigo simplesmente não as via, fazendo a automação tratar
+    tudo como se fosse desenhado dentro da janela principal do WeChat, o
+    que é falso.
+
+    Se mais de uma janela casar com `padrao`, devolve a ÚLTIMA da lista
+    (heurística: costuma ser a mais recente/a que acabou de abrir).
+    """
+    try:
+        saida = _run(["xdotool", "search", "--name", padrao])
+    except subprocess.CalledProcessError:
+        return None
+    ids = [linha for linha in saida.splitlines() if linha.strip()]
+    return ids[-1] if ids else None
+
+
 def geometria_janela(window_id: str) -> dict:
     """Retorna {"x":..,"y":..,"width":..,"height":..} da janela via xdotool."""
     saida = _run(["xdotool", "getwindowgeometry", "--shell", window_id])
@@ -87,11 +121,24 @@ def focar_janela(window_id: str) -> None:
     _run(["xdotool", "windowactivate", window_id])
 
 
+def mover_mouse(x: int, y: int) -> None:
+    # `xdotool mousemove` não move o ponteiro de verdade aqui (bloqueio do
+    # Wayland/KWin ao warp via XTest, confirmado ao vivo). `ydotool` (uinput)
+    # contorna isso — exige `ydotoold` rodando e o usuário no grupo `input`.
+    #
+    # NOTA: uma tentativa de correção por delta relativo em malha fechada
+    # (usando `xdotool getmouselocation` como leitura de posição atual) foi
+    # testada e descartada — a leitura não é confiável nesse setup
+    # (XWayland/multi-monitor), e o loop acabou perseguindo um alvo errado
+    # e jogando o cursor pra fora da tela. Voltamos ao absoluto simples,
+    # sem malha de correção, até validar isso com mais cuidado.
+    _run(["ydotool", "mousemove", "--absolute", "-x", str(x), "-y", str(y)])
+
+
 def clicar(x: int, y: int) -> None:
-    # Evitar "--sync" aqui também, pelo mesmo motivo do focar_janela.
-    _run(["xdotool", "mousemove", str(x), str(y)])
+    mover_mouse(x, y)
     dormir(0.1)
-    _run(["xdotool", "click", "1"])
+    _run(["ydotool", "click", "0xC0"])
 
 
 def colar_texto(texto: str) -> None:
@@ -109,3 +156,44 @@ def colar_texto(texto: str) -> None:
 
 def tecla(nome: str) -> None:
     _run(["xdotool", "key", nome])
+
+
+def janela_ativa() -> str | None:
+    """Id da janela em foco agora (o popup mais recente, se um estiver
+    aberto). Usada pra ancorar cliques na janela certa mesmo quando ela
+    aparece em posição variável na tela — ver wechat_client.py.
+
+    `xdotool getactivewindow` às vezes devolve um id de janela "fantasma"
+    com geometria degenerada (visto ao vivo: x=-1, y=-1, 1x1 — provavelmente
+    algum overlay/proxy interno do KWin, não a janela real em foco). Usar
+    essa geometria pra calcular posição de clique quebra tudo (recorte de
+    imagem com coordenadas fora dos limites). Por isso validamos a
+    geometria aqui e devolvemos None (o chamador cai no fallback pra
+    `window_id` conhecido) se ela parecer bogus.
+    """
+    try:
+        candidato = _run(["xdotool", "getactivewindow"])
+    except subprocess.CalledProcessError:
+        return None
+    try:
+        geom = geometria_janela(candidato)
+    except subprocess.CalledProcessError:
+        return None
+    if geom.get("width", 0) <= 1 or geom.get("height", 0) <= 1:
+        return None
+    return candidato
+
+
+def posicao_mouse() -> tuple[int, int]:
+    """Posição absoluta do cursor na tela (x, y) — usado pela calibração
+    interativa (ver `calibrate_add_contact.py`): o usuário só move o mouse até
+    o elemento e pede pra registrar, sem precisar clicar nem adivinhar
+    coordenada de cabeça.
+    """
+    saida = _run(["xdotool", "getmouselocation", "--shell"])
+    dados = {}
+    for linha in saida.splitlines():
+        chave, _, valor = linha.partition("=")
+        if chave in ("X", "Y"):
+            dados[chave] = int(valor)
+    return dados["X"], dados["Y"]
