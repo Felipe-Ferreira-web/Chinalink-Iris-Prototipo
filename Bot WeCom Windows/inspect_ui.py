@@ -31,7 +31,9 @@ TITLE_NEEDLES = ("Weixin", "WeChat", "微信")
 # Classes de janela de outros apps que só coincidem no título (ex.: uma aba
 # do navegador com "微信" no texto) — nunca é a janela real do WeChat.
 FALSE_POSITIVE_CLASS_PREFIXES = ("Chrome_WidgetWin",)
-MAX_DEPTH = 30
+# Árvore UIA é finita (sem ciclos) — isso não é um corte esperado, é só uma
+# rede de segurança contra recursão descontrolada caso algo esteja errado.
+SANITY_DEPTH_LIMIT = 200
 
 
 def find_wechat_windows() -> list:
@@ -73,7 +75,10 @@ def dump_node(wrapper, depth: int, out) -> None:
         f"text={text!r} rect={rect}\n"
     )
 
-    if depth >= MAX_DEPTH:
+    if depth >= SANITY_DEPTH_LIMIT:
+        # Não é um corte esperado — árvore UIA é finita. Se isso disparar,
+        # tem algo errado (loop/ciclo), não falta de profundidade.
+        out.write(f"{indent}  !!! limite de segurança ({SANITY_DEPTH_LIMIT}) atingido, parando aqui\n")
         return
     try:
         children = wrapper.children()
