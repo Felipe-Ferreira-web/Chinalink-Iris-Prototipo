@@ -1,3 +1,6 @@
 .env
 __pycache__/
 venv/
+
+# Dump da árvore de UI pode conter nomes de contato/texto de mensagem reais.
+ui_dump.txt

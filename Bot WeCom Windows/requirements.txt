@@ -1,2 +1,9 @@
-wxauto4
+# wxauto4 (via fork AngeCoo/wxauto-4.0) travava com deadlock real de lock
+# não-reentrante — investigando o histórico de commits do fork, o código é
+# gerado por agente de IA (Codex) "completando" a API a partir só da
+# documentação, nunca testado contra o WeChat de verdade (ver README).
+# Abandonado. Escrevendo automação própria com pywinauto (lib de UI
+# Automation madura e real) em cima da árvore de controles inspecionada
+# de verdade (ui/inspect_ui.py).
+pywinauto>=0.6.8
 python-dotenv>=1.0.0

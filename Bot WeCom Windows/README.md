@@ -1,10 +1,14 @@
 # Bot WeCom Windows
 
 > Segunda tentativa de automação de mensageria do WeChat/WeCom — via
-> **UI Automation do Windows**, rodando num Windows Server (RDP), usando a
-> lib `wxauto4` (versão gratuita). Pasta separada da antiga `Bot WeCom`
-> (Linux, AT-SPI/OCR, descartada — ver `README.md` de lá para o histórico
-> completo da investigação).
+> **UI Automation do Windows**, rodando num Windows Server (RDP). Pasta
+> separada da antiga `Bot WeCom` (Linux, AT-SPI/OCR, descartada — ver
+> `README.md` de lá para o histórico completo da investigação).
+>
+> A lib `wxauto4` (via fork `AngeCoo/wxauto-4.0`) foi **testada e
+> abandonada** — ver seção "Tentativa abandonada" abaixo. Abordagem atual:
+> automação própria com `pywinauto`, em cima da árvore de controles real
+> do WeChat (inspecionada, não adivinhada).
 
 ## Por que uma pasta separada
 
@@ -24,29 +28,54 @@ Como o ambiente de execução (Windows Server) e o mecanismo de automação
 faz mais sentido desenvolver isso numa pasta própria em vez de misturar
 com o código Linux antigo.
 
-## Stack
+## Tentativa abandonada: `wxauto4`
 
-| Item | Detalhe |
-|---|---|
-| Lib | [`wxauto4`](https://pypi.org/project/wxauto4/) — versão **gratuita**, sem licença comercial. Este módulo é só para testar até onde ela dá conta antes de considerar a `wxautox4` (Plus, paga, com restrição de uso comercial a checar). |
-| Onde roda | Windows Server da empresa, sessão de desktop interativa real via RDP — **não** funciona em Docker/headless (precisa de sessão de UI de verdade). |
-| App automatizado | WeChat desktop (ou WeCom, se confirmado que a lib também cobre o cliente corporativo) já logado na sessão. |
-| Fluxo de dev | Editar aqui no Linux → `git push` → `git pull` no servidor Windows (ou VS Code Remote SSH, se configurado) → rodar `python explore.py` na sessão RDP. |
+Testamos `wxauto4` via fork [`AngeCoo/wxauto-4.0`](https://github.com/AngeCoo/wxauto-4.0)
+(o pacote `wxauto4` do PyPI não tem wheel pra Python 3.13, e o repo do
+autor original `cluic/wxauto4` foi esvaziado — issue da comunidade aponta
+ameaça jurídica recebida, mesmo motivo de outro projeto similar
+(`PyWxDump`) ter sumido). Resultado:
 
-## ⚠️ Pré-requisito: versão exata do WeChat
+- `WeChat()`, `.nickname`, `.path`, `.dir` funcionavam (chamadas Win32
+  triviais, só leem a janela).
+- `GetSession()` sempre voltava vazio, e `ChatWith()`/busca de contato
+  travava ou dava timeout num `ListControl` — em **duas versões
+  diferentes do WeChat** (4.1.11.52 e a 4.0.5.26, a build especificamente
+  recomendada pela comunidade pra essa lib), o que descartou versão do
+  WeChat como causa.
+- Rodando com terminal elevado (Administrator, igual ao WeChat), o erro
+  mudou: travou num deadlock real dentro de `menu.select('粘贴')` —
+  `LockManager.process_lock` (um `multiprocessing.Lock()`, não
+  reentrante) sendo readquirido numa chamada aninhada, dentro do mesmo
+  thread. Um bug de concorrência que só aparece rodando de verdade.
+- **Causa raiz**: o histórico de commits do fork tem branches chamadas
+  `codex/complete-unimplemented-features-from-documentation`,
+  `codex/complete-unimplemented-features-in-chat-class` etc — sinal de
+  que o código foi gerado por um agente de IA (Codex) "completando" a API
+  a partir só do README, sem nunca ter rodado contra um WeChat de
+  verdade. Isso explica os sintomas: o que é chamada Win32 rasa funciona,
+  o que depende da árvore real de UI (nomes de classe, itens de menu,
+  fluxo de busca) foi adivinhado e não bate com o app real. O outro fork
+  encontrado (`moguangjian/wxauto-4.0`) é cópia idêntica do mesmo
+  histórico — não é alternativa independente.
 
-A `wxauto4` (confirmado na documentação oficial, não só no changelog) só
-funciona com o **cliente WeChat 4.0.5** especificamente — não "4.0 ou
-mais recente". Antes de instalar a lib:
+Decisão: abandonar qualquer wrapper "wxauto*" sem primeiro checar se o
+histórico de commits é genuíno, e construir automação própria mínima em
+cima da árvore de controles real (ver abaixo).
 
-1. Confirmar qual versão do WeChat está instalada no Windows Server.
-2. Se não for a 4.0.5, baixar essa versão específica em
-   [`SiverKing/wechat4.0-windows-versions`](https://github.com/SiverKing/wechat4.0-windows-versions/releases)
-   (não clicar direto no link de download da release — abrir a versão
-   certa, expandir "Assets" e baixar o `.exe` de lá).
-3. **Desativar o auto-update do WeChat** — uma atualização automática
-   quebra a automação silenciosamente (a UI Automation passa a não achar
-   mais os controles esperados).
+## Abordagem atual: automação própria com `pywinauto`
+
+[`pywinauto`](https://github.com/pywinauto/pywinauto) é uma lib de UI
+Automation madura, real e ativamente mantida — não um wrapper de
+procedência duvidosa. Em vez de replicar a API inteira de um "wxauto"
+(moments, grupos, arquivos, tudo), escrevemos só o que o Iris precisa:
+enviar mensagem e ler mensagem nova.
+
+**Primeiro passo — sem versão travada do WeChat** (essa trava era só do
+fork abandonado): `inspect_ui.py` dumpa a árvore real de controles do
+WeChat já aberto, sem clicar em nada, pra descobrir de verdade os
+nomes/classes da caixa de busca, lista de conversas, campo de mensagem e
+botão de enviar — em vez de adivinhar.
 
 ## Setup (no Windows Server)
 
@@ -65,56 +94,28 @@ não um contato real).
 ## Uso
 
 ```powershell
-python explore.py             # diagnóstico: conecta, lista sessões, lê histórico — sem enviar nada
-python main.py                # escuta TARGET_CHAT_NAME por LISTEN_DURATION_SECONDS, imprime mensagens novas
-python main.py --test-reply   # além de escutar, manda TEST_MESSAGE pra TARGET_CHAT_NAME uma vez no início
+python inspect_ui.py   # dump da árvore real de controles em ui_dump.txt — sem clicar em nada
 ```
 
-Rodar `explore.py` primeiro — não tem efeito colateral, só confirma que a
-lib enxerga a janela do WeChat já aberta (`WeChat()`), lista as conversas
-da sidebar (`GetSession()`) e lê o histórico da conversa alvo
-(`ChatWith()` + `GetAllMessage()`). Cada passo imprime o resultado antes
-de seguir pro próximo, pra facilitar ver exatamente onde algo quebra — não
-temos como rodar/depurar isso a partir do Linux, todo teste real acontece
-na sessão RDP.
-
-`main.py` testa o mecanismo de "ler mensagem nova em tempo real"
-(`AddListenChat` + callback), que é o ponto em aberto mais importante
-desta etapa — ler mensagens hoje (na pasta antiga) dependia de OCR
-comparando linhas de texto, sem saber o remetente de verdade.
-
-## API confirmada na documentação (`wxauto4.WeChat`)
-
-Lido direto do código-fonte (`wx.py`, `param.py`, `msgs/`), não só do
-README do pacote:
-
-| Método/atributo | O que faz |
-|---|---|
-| `WeChat(start_listener=False, debug=False)` | Conecta na instância já aberta. `.nickname`, `.path`, `.dir` disponíveis depois. |
-| `GetSession()` | Lista as conversas da sidebar (`.name`, `.unread_count`). |
-| `ChatWith(who, exact=False)` | Navega até a conversa. |
-| `SendMsg(msg, who=None, at=None, exact=False)` | Envia texto; aceita `@` de outros usuários. |
-| `SendFiles(filepath, who=None)` | Envia arquivo(s), aceita lista. |
-| `GetAllMessage()` / `GetNewMessage()` | Lista de `Message` — `.attr` (`self`/`friend`/`system`), `.sender`, `.content`, `.type` (`text`/`image`/`file`/`voice`/`video`/`quote`/`other`). |
-| `AddListenChat(who, callback)` | Registra `callback(msg, chat)`, disparado por um thread pool interno a cada `WxParam.LISTEN_INTERVAL` (padrão 1s) — é o jeito certo de monitorar chat, não polling manual. |
-| `StopListening()` / `KeepRunning()` | Encerra o listener / bloqueia a thread principal enquanto ele roda. |
-| `WxResponse` | Retorno de toda ação (`SendMsg`, `SendFiles`, `ChatWith`) — dict-like com `.is_success`, nunca lança exceção em falha esperada (contato não encontrado etc). Sempre checar `.is_success`, não assumir sucesso. |
+Abra `ui_dump.txt` depois de rodar e procure pelos elementos: caixa de
+busca, lista de conversas na sidebar, campo de digitar mensagem, botão de
+enviar. É a partir desses nomes/classes reais que a automação de
+`SendMsg`/leitura de mensagem vai ser escrita — os scripts antigos
+`explore.py`/`main.py` (que dependiam do `wxauto4` abandonado) ainda
+estão na pasta como referência, mas não rodam mais sem reinstalar aquela
+dependência.
 
 ## Pendências desta etapa
 
-- [ ] Confirmar se `wxauto4` cobre só WeChat pessoal ou também WeCom
-      (`WeCom()` é uma classe separada na lib — testar).
+- [ ] Rodar `inspect_ui.py` no servidor e mapear os seletores reais da
+      caixa de busca, lista de conversas, campo de mensagem e botão de
+      enviar.
+- [ ] Escrever `send_message`/`read_new_messages` próprios com
+      `pywinauto`, testados contra o WeChat de verdade (não adivinhados).
+- [ ] Confirmar se a automação também cobre WeCom (cliente corporativo)
+      ou só WeChat pessoal.
 - [ ] Testar estabilidade do RDP durante uso prolongado (risco já
       identificado no relatório do módulo — causa ainda não confirmada:
       timeout de sessão ociosa, limite de sessões simultâneas, ou rede/VPN).
 - [ ] Avaliar risco de detecção de login por região/IP (servidor fora da
       China) antes de qualquer teste com conta real de produção.
-- [ ] **Licença**: mesmo a versão gratuita não tem licença formal (o
-      repositório não declara nenhuma) — só um aviso de "uso exclusivo
-      para fins de estudo e pesquisa", responsabilidade do usuário. Checar
-      se isso é aceitável pra uso comercial no Iris antes de ir pra
-      produção (mesma pendência já levantada pra `wxautox4`, só que ali
-      pelo menos existe um tier pago pra negociar — aqui não).
-- [ ] Só depois de validar o básico aqui: decidir se compensa migrar para
-      `wxautox4` (Plus) e checar se a licença dela conflita com uso
-      comercial no Iris.
