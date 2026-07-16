@@ -6,6 +6,7 @@ Uso:
     python main.py                     # só lê e imprime as mensagens de TARGET_CHAT_NAME
     python main.py --test-reply        # além de ler, manda TEST_MESSAGE (do .env) antes
     python main.py --test-reply "oi"   # manda esse texto específico em vez de TEST_MESSAGE
+    python main.py --echo-last         # lê a última mensagem de TARGET_CHAT_NAME e reenvia ela mesma
 """
 
 from __future__ import annotations
@@ -28,6 +29,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Envia uma mensagem de teste para TARGET_CHAT_NAME antes de ler. "
         "Sem valor, usa TEST_MESSAGE do .env.",
+    )
+    parser.add_argument(
+        "--echo-last",
+        action="store_true",
+        help="Lê a última mensagem de TARGET_CHAT_NAME e reenvia ela mesma "
+        "(teste de leitura, não só de envio).",
     )
     return parser.parse_args()
 
@@ -52,6 +59,16 @@ def main() -> None:
     log.info("%d mensagens de texto encontradas:", len(messages))
     for text in messages:
         log.info("  %s", text)
+
+    if args.echo_last:
+        if not messages:
+            raise RuntimeError(
+                f"Nenhuma mensagem encontrada em '{config.target_chat_name}' pra ecoar."
+            )
+        last_message = messages[-1]
+        log.info("Reenviando a última mensagem lida: %r", last_message)
+        wechat.send_message(window, config.target_chat_name, last_message)
+        log.info("Ecoado.")
 
 
 if __name__ == "__main__":
