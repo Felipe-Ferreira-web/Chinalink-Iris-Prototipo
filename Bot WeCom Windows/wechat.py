@@ -29,6 +29,7 @@ TITLE_NEEDLES = ("Weixin", "WeChat", "微信")
 FALSE_POSITIVE_CLASS_PREFIXES = ("Chrome_WidgetWin",)
 MESSAGE_TEXT_CLASS = "mmui::ChatTextItemView"
 SESSION_ITEM_PREFIX = "session_item_"
+CURRENT_CHAT_LABEL_SUFFIX = "current_chat_name_label"
 # Esse servidor é lento pra chamadas UIA (achar a janela chegou a levar 1
 # minuto) — timeout generoso, com retry, em vez de assumir que o elemento
 # já está renderizado logo após uma ação (click, troca de chat etc).
@@ -103,7 +104,18 @@ def list_sessions(window) -> list[str]:
     return names
 
 
+def get_current_chat_name(window) -> str | None:
+    for item in window.descendants(control_type="Text"):
+        if item.element_info.automation_id.endswith(CURRENT_CHAT_LABEL_SUFFIX):
+            return item.window_text()
+    return None
+
+
 def open_chat(window, chat_name: str) -> None:
+    # Clicar numa conversa que já está aberta a FECHA (é toggle, não "abrir
+    # garantido") — sempre confirma o estado atual antes de agir.
+    if get_current_chat_name(window) == chat_name:
+        return
     item = _find_one(
         window,
         f"Conversa '{chat_name}' na sidebar",
