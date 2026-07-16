@@ -37,24 +37,45 @@ FIND_TIMEOUT_SECONDS = 15.0
 FIND_POLL_INTERVAL_SECONDS = 0.5
 
 
+def find_window_by_title(
+    title_needles: tuple[str, ...],
+    filter_false_positives: bool = False,
+    timeout: float = FIND_TIMEOUT_SECONDS,
+):
+    """Acha uma janela de nível superior pelo título, com retry até `timeout`
+    — útil tanto pra janela principal (já aberta) quanto pra diálogos que só
+    aparecem depois de um clique (ex.: "Add Contacts", "Send Friend Request").
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        desktop = Desktop(backend="uia")
+        candidates = []
+        for window in desktop.windows():
+            try:
+                title = window.window_text()
+                class_name = window.element_info.class_name
+            except Exception:
+                continue
+            if not any(needle in title for needle in title_needles):
+                continue
+            if filter_false_positives and any(
+                class_name.startswith(prefix) for prefix in FALSE_POSITIVE_CLASS_PREFIXES
+            ):
+                continue
+            candidates.append(window)
+        candidates.sort(key=lambda w: 0 if w.element_info.class_name.startswith("mmui") else 1)
+        if candidates:
+            return candidates[0]
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"Nenhuma janela com título contendo {title_needles!r} encontrada "
+                f"após {timeout}s."
+            )
+        time.sleep(FIND_POLL_INTERVAL_SECONDS)
+
+
 def find_wechat_window():
-    desktop = Desktop(backend="uia")
-    candidates = []
-    for window in desktop.windows():
-        try:
-            title = window.window_text()
-            class_name = window.element_info.class_name
-        except Exception:
-            continue
-        if not any(needle in title for needle in TITLE_NEEDLES):
-            continue
-        if any(class_name.startswith(prefix) for prefix in FALSE_POSITIVE_CLASS_PREFIXES):
-            continue
-        candidates.append(window)
-    candidates.sort(key=lambda w: 0 if w.element_info.class_name.startswith("mmui") else 1)
-    if not candidates:
-        raise RuntimeError("Janela do WeChat não encontrada. O WeChat está aberto?")
-    return candidates[0]
+    return find_window_by_title(TITLE_NEEDLES, filter_false_positives=True)
 
 
 def _find_one(

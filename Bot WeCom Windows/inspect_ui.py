@@ -13,12 +13,18 @@ método só existe em WindowSpecification (via Application().connect()),
 não nos objetos crus que Desktop().windows() devolve.
 
 Uso:
-    python inspect_ui.py
+    python inspect_ui.py                    # janela principal do WeChat
+    python inspect_ui.py --title "Add Contact"   # qualquer outra janela de nível
+                                                  # superior aberta no momento
+                                                  # (diálogos como "Add Contacts",
+                                                  # "Send Friend Request")
 """
 
 from __future__ import annotations
 
+import argparse
 import logging
+import re
 
 from pywinauto import Desktop
 
@@ -26,17 +32,19 @@ from config import load_config, setup_logging
 
 log = logging.getLogger("inspect_ui")
 
-OUTPUT_FILE = "ui_dump.txt"
+DEFAULT_OUTPUT_FILE = "ui_dump.txt"
 TITLE_NEEDLES = ("Weixin", "WeChat", "微信")
 # Classes de janela de outros apps que só coincidem no título (ex.: uma aba
-# do navegador com "微信" no texto) — nunca é a janela real do WeChat.
+# do navegador com "微信" no texto) — nunca é a janela real do WeChat. Só se
+# aplica na busca padrão (sem --title); um diálogo pedido explicitamente por
+# título não precisa desse filtro.
 FALSE_POSITIVE_CLASS_PREFIXES = ("Chrome_WidgetWin",)
 # Árvore UIA é finita (sem ciclos) — isso não é um corte esperado, é só uma
 # rede de segurança contra recursão descontrolada caso algo esteja errado.
 SANITY_DEPTH_LIMIT = 200
 
 
-def find_wechat_windows() -> list:
+def find_windows(title_needles: tuple[str, ...], filter_false_positives: bool) -> list:
     desktop = Desktop(backend="uia")
     candidates = []
     for window in desktop.windows():
@@ -45,13 +53,15 @@ def find_wechat_windows() -> list:
             class_name = window.element_info.class_name
         except Exception:
             continue
-        if not any(needle in title for needle in TITLE_NEEDLES):
+        if not any(needle in title for needle in title_needles):
             continue
-        if any(class_name.startswith(prefix) for prefix in FALSE_POSITIVE_CLASS_PREFIXES):
+        if filter_false_positives and any(
+            class_name.startswith(prefix) for prefix in FALSE_POSITIVE_CLASS_PREFIXES
+        ):
             continue
         candidates.append(window)
-    # Janelas com classe "mmui::*" são o WeChat de verdade (Qt interno da
-    # Tencent) — prioriza essas se houver mais de uma candidata restante.
+    # Janelas com classe "mmui::*" são o app real (Qt interno da Tencent) —
+    # prioriza essas se houver mais de uma candidata restante.
     candidates.sort(key=lambda w: 0 if w.element_info.class_name.startswith("mmui") else 1)
     return candidates
 
@@ -89,18 +99,35 @@ def dump_node(wrapper, depth: int, out) -> None:
         dump_node(child, depth + 1, out)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--title",
+        help="Substring do título da janela a inspecionar (ex.: 'Add Contact', "
+        "'Send Friend Request'). Sem isso, procura a janela principal do WeChat.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     config = load_config()
     setup_logging(config.log_level)
 
-    log.info("Procurando janelas do WeChat na área de trabalho...")
-    candidates = find_wechat_windows()
+    if args.title:
+        title_needles = (args.title,)
+        filter_false_positives = False
+        output_file = f"ui_dump_{re.sub(r'[^A-Za-z0-9]+', '_', args.title).strip('_').lower()}.txt"
+    else:
+        title_needles = TITLE_NEEDLES
+        filter_false_positives = True
+        output_file = DEFAULT_OUTPUT_FILE
+
+    log.info("Procurando janela com título contendo %r...", title_needles)
+    candidates = find_windows(title_needles, filter_false_positives)
 
     if not candidates:
-        log.error(
-            "Nenhuma janela real do WeChat encontrada (título com "
-            "'Weixin'/'WeChat'/'微信', excluindo abas de navegador). Está aberto?"
-        )
+        log.error("Nenhuma janela encontrada com título contendo %r. Está aberta?", title_needles)
         log.info("Janelas de nível superior encontradas, pra conferência manual:")
         for window in Desktop(backend="uia").windows():
             try:
@@ -126,15 +153,11 @@ def main() -> None:
         "Usando a candidata 0 (%r, class=%s). Dumpando árvore de controles em %s...",
         window.window_text(),
         window.element_info.class_name,
-        OUTPUT_FILE,
+        output_file,
     )
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as out:
+    with open(output_file, "w", encoding="utf-8") as out:
         dump_node(window, 0, out)
-    log.info(
-        "Pronto. Abra %s e procura pelos elementos: caixa de busca, lista de "
-        "conversas na sidebar, campo de digitar mensagem, botão de enviar.",
-        OUTPUT_FILE,
-    )
+    log.info("Pronto. Abra %s e procura pelos elementos relevantes.", output_file)
 
 
 if __name__ == "__main__":
