@@ -13,6 +13,18 @@ Seletores confirmados no dump real:
 - Lista de mensagens: auto_id='chat_message_list'; itens de texto são
   class='mmui::ChatTextItemView' (outros tipos, ex. ChatItemView, são só
   separador de horário, sem conteúdo de mensagem).
+
+Fluxo de adicionar contato (janelas separadas de verdade, confirmado nos
+dumps `ui_dump_add_contact.txt`/`ui_dump_send_friend_request.txt`):
+- Diálogo "Add Contacts" (class mmui::AddFriendWindow): campo de busca é
+  o único Edit da janela; botão "Search" de verdade (title='Search',
+  diferente da busca da sidebar, que usa Enter); resultado "não
+  encontrado" é um Text contendo "User not found"; resultado encontrado
+  mostra um botão title='Add to Contacts'.
+- Diálogo "Send Friend Request" (class mmui::VerifyFriendWindow): campo
+  de mensagem de verificação é um Edit (pré-preenchido, editável); botão
+  de confirmar é title='OK' (existe também title='Cancel' — desambiguar
+  sempre pelo texto).
 """
 
 from __future__ import annotations
@@ -30,6 +42,10 @@ FALSE_POSITIVE_CLASS_PREFIXES = ("Chrome_WidgetWin",)
 MESSAGE_TEXT_CLASS = "mmui::ChatTextItemView"
 SESSION_ITEM_PREFIX = "session_item_"
 CURRENT_CHAT_LABEL_SUFFIX = "current_chat_name_label"
+ADD_CONTACTS_MENU_TEXT = "Add Contacts"
+ADD_CONTACTS_WINDOW_TITLE = ("Add Contacts",)
+SEND_FRIEND_REQUEST_WINDOW_TITLE = ("Send Friend Request",)
+USER_NOT_FOUND_TEXT = "User not found"
 # Esse servidor é lento pra chamadas UIA (achar a janela chegou a levar 1
 # minuto) — timeout generoso, com retry, em vez de assumir que o elemento
 # já está renderizado logo após uma ação (click, troca de chat etc).
@@ -140,6 +156,121 @@ def _focus_window(window) -> None:
     # estiver visível ali, não no WeChat. Refoca antes de CADA ação.
     window.set_focus()
     time.sleep(0.3)
+
+
+def _click_by_text(text: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
+    """Clica no primeiro elemento com esse texto em QUALQUER janela de nível
+    superior — usado pra item de menu/popup transitório (ex.: o menu de
+    atalhos), cuja janela não tem título/classe estável pra buscar direto
+    (o próprio dump confirma que popups do WeChat são janelas de nível
+    superior de verdade, não filhas da janela principal).
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        for window in Desktop(backend="uia").windows():
+            try:
+                matches = window.descendants(title=text)
+            except Exception:
+                continue
+            if matches:
+                matches[0].click_input()
+                return
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"Elemento com texto {text!r} não encontrado em nenhuma janela.")
+        time.sleep(FIND_POLL_INTERVAL_SECONDS)
+
+
+def open_add_contact_dialog(main_window):
+    """Abre o diálogo "Add Contacts" a partir da janela principal do WeChat."""
+    _focus_window(main_window)
+    shortcuts_button = _find_one(
+        main_window, "Botão 'Shortcuts'", title="Shortcuts", control_type="Button"
+    )
+    shortcuts_button.click_input()
+    _click_by_text(ADD_CONTACTS_MENU_TEXT)
+    return find_window_by_title(ADD_CONTACTS_WINDOW_TITLE)
+
+
+def add_contact_by_phone(main_window, phone: str, message: str | None = None) -> str | None:
+    """Busca `phone` no diálogo "Add Contacts" e manda pedido de amizade,
+    opcionalmente customizando a mensagem de verificação.
+
+    Retorna o APELIDO (nickname) real do WeChat da pessoa em caso de
+    sucesso, ou `None` se o número não corresponder a nenhum contato —
+    o nome do fornecedor no Django (ou o telefone) quase nunca bate com
+    esse apelido, então é ele (não `phone`/`supplier.name`) que precisa
+    ser usado depois em `send_message`/`open_chat` pra achar a conversa
+    na sidebar (auto_id='session_item_<apelido>').
+
+    Precisa da outra pessoa ACEITAR o pedido antes de existir conversa
+    pra `send_message` funcionar (ver README).
+    """
+    dialog = open_add_contact_dialog(main_window)
+    _focus_window(dialog)
+
+    search_field = _find_one(dialog, "Campo de busca", control_type="Edit")
+    search_field.click_input()
+    _set_clipboard_text(phone)
+    search_field.type_keys("^v", pause=0.05)
+    time.sleep(0.3)
+
+    search_button = _find_one(dialog, "Botão 'Search'", title="Search", control_type="Button")
+    _focus_window(dialog)
+    search_button.click_input()
+
+    # Espera ou o card de perfil (botão "Add to Contacts") ou a mensagem
+    # de "não encontrado" — o que aparecer primeiro decide o resultado.
+    deadline = time.monotonic() + FIND_TIMEOUT_SECONDS
+    add_button = None
+    nickname = None
+    while time.monotonic() < deadline:
+        not_found = [
+            d for d in dialog.descendants(control_type="Text")
+            if USER_NOT_FOUND_TEXT in d.window_text()
+        ]
+        if not_found:
+            return None
+        found = dialog.descendants(title="Add to Contacts", control_type="Button")
+        if found:
+            add_button = found[0]
+            nickname_matches = [
+                d for d in dialog.descendants(control_type="Text")
+                if d.element_info.automation_id.endswith("display_name_text")
+            ]
+            nickname = nickname_matches[0].window_text() if nickname_matches else None
+            break
+        time.sleep(FIND_POLL_INTERVAL_SECONDS)
+    if add_button is None:
+        raise RuntimeError(
+            f"Nem resultado nem 'não encontrado' apareceu pra {phone!r} "
+            f"após {FIND_TIMEOUT_SECONDS}s."
+        )
+    if not nickname:
+        raise RuntimeError(
+            f"Card de perfil encontrado pra {phone!r}, mas não achei o apelido "
+            f"(display_name_text) — não dá pra saber o nome da conversa depois."
+        )
+
+    _focus_window(dialog)
+    add_button.click_input()
+
+    request_window = find_window_by_title(SEND_FRIEND_REQUEST_WINDOW_TITLE)
+    _focus_window(request_window)
+
+    if message is not None:
+        message_field = _find_one(
+            request_window, "Campo de mensagem do pedido", control_type="Edit"
+        )
+        message_field.click_input()
+        message_field.type_keys("^a", pause=0.05)
+        _set_clipboard_text(message)
+        message_field.type_keys("^v", pause=0.05)
+        time.sleep(0.3)
+
+    ok_button = _find_one(request_window, "Botão 'OK'", title="OK", control_type="Button")
+    _focus_window(request_window)
+    ok_button.click_input()
+    return nickname
 
 
 def open_chat(window, chat_name: str) -> None:
