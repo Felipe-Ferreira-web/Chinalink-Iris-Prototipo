@@ -111,6 +111,16 @@ def get_current_chat_name(window) -> str | None:
     return None
 
 
+def _focus_window(window) -> None:
+    # click_input() faz um clique de mouse de verdade nas coordenadas de
+    # tela — sem trazer a janela pra frente antes (só faz isso sozinho se
+    # for um diálogo). Se o WeChat não estiver em primeiro plano (ex.: o
+    # terminal rodando este script está por cima), o clique cai no que
+    # estiver visível ali, não no WeChat. Refoca antes de CADA ação.
+    window.set_focus()
+    time.sleep(0.3)
+
+
 def open_chat(window, chat_name: str) -> None:
     # Clicar numa conversa que já está aberta a FECHA (é toggle, não "abrir
     # garantido") — sempre confirma o estado atual antes de agir.
@@ -121,17 +131,20 @@ def open_chat(window, chat_name: str) -> None:
         f"Conversa '{chat_name}' na sidebar",
         auto_id=f"session_item_{chat_name}",
     )
+    _focus_window(window)
     item.click_input()
 
 
 def send_message(window, chat_name: str, text: str) -> None:
     open_chat(window, chat_name)
     input_field = _find_one(window, "Campo de mensagem", auto_id="chat_input_field")
+    _focus_window(window)
     input_field.click_input()
     _set_clipboard_text(text)
     input_field.type_keys("^v", pause=0.05)
     time.sleep(1.0)  # servidor lento; dá tempo do paste refletir antes de enviar
     send_button = _find_one(window, "Botão 'Send'", title="Send", control_type="Button")
+    _focus_window(window)
     send_button.click_input()
 
 
