@@ -29,6 +29,11 @@ TITLE_NEEDLES = ("Weixin", "WeChat", "微信")
 FALSE_POSITIVE_CLASS_PREFIXES = ("Chrome_WidgetWin",)
 MESSAGE_TEXT_CLASS = "mmui::ChatTextItemView"
 SESSION_ITEM_PREFIX = "session_item_"
+# Esse servidor é lento pra chamadas UIA (achar a janela chegou a levar 1
+# minuto) — timeout generoso, com retry, em vez de assumir que o elemento
+# já está renderizado logo após uma ação (click, troca de chat etc).
+FIND_TIMEOUT_SECONDS = 15.0
+FIND_POLL_INTERVAL_SECONDS = 0.5
 
 
 def find_wechat_window():
@@ -51,16 +56,32 @@ def find_wechat_window():
     return candidates[0]
 
 
-def _find_one(window, error_label: str, auto_id: str | None = None, **kwargs):
+def _find_one(
+    window,
+    error_label: str,
+    auto_id: str | None = None,
+    timeout: float = FIND_TIMEOUT_SECONDS,
+    **kwargs,
+):
     # pywinauto 0.6.9 não aceita auto_id= como filtro direto em
     # descendants()/children() (só class_name/title/control_type são
     # repassados pra build_condition) — filtra auto_id na mão em Python.
-    matches = window.descendants(**kwargs)
-    if auto_id is not None:
-        matches = [m for m in matches if m.element_info.automation_id == auto_id]
-    if not matches:
-        raise RuntimeError(f"{error_label} não encontrado (auto_id={auto_id!r}, {kwargs}).")
-    return matches[0]
+    #
+    # Tenta de novo até `timeout` em vez de olhar uma vez só: o servidor é
+    # lento pra chamadas UIA, e um elemento pode ainda não estar renderizado
+    # logo após uma ação (clique, troca de chat).
+    deadline = time.monotonic() + timeout
+    while True:
+        matches = window.descendants(**kwargs)
+        if auto_id is not None:
+            matches = [m for m in matches if m.element_info.automation_id == auto_id]
+        if matches:
+            return matches[0]
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"{error_label} não encontrado após {timeout}s (auto_id={auto_id!r}, {kwargs})."
+            )
+        time.sleep(FIND_POLL_INTERVAL_SECONDS)
 
 
 def _set_clipboard_text(text: str) -> None:
@@ -89,7 +110,6 @@ def open_chat(window, chat_name: str) -> None:
         auto_id=f"session_item_{chat_name}",
     )
     item.click_input()
-    time.sleep(0.3)
 
 
 def send_message(window, chat_name: str, text: str) -> None:
@@ -98,7 +118,7 @@ def send_message(window, chat_name: str, text: str) -> None:
     input_field.click_input()
     _set_clipboard_text(text)
     input_field.type_keys("^v", pause=0.05)
-    time.sleep(0.2)
+    time.sleep(1.0)  # servidor lento; dá tempo do paste refletir antes de enviar
     send_button = _find_one(window, "Botão 'Send'", title="Send", control_type="Button")
     send_button.click_input()
 
