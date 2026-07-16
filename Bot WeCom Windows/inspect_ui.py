@@ -31,7 +31,7 @@ TITLE_NEEDLES = ("Weixin", "WeChat", "微信")
 # Classes de janela de outros apps que só coincidem no título (ex.: uma aba
 # do navegador com "微信" no texto) — nunca é a janela real do WeChat.
 FALSE_POSITIVE_CLASS_PREFIXES = ("Chrome_WidgetWin",)
-MAX_DEPTH = 12
+MAX_DEPTH = 30
 
 
 def find_wechat_windows() -> list:
