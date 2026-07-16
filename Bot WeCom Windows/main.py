@@ -1,23 +1,19 @@
-"""Listener de mensagens do WeChat via wxauto4 (AddListenChat), + envio opcional.
+"""Testa envio + leitura de mensagem via pywinauto (ver wechat.py).
 
-Testa o mecanismo de "ler mensagem nova em tempo real" que ficou em
-aberto na pasta antiga (`Bot WeCom`, que dependia de OCR comparando linhas
-de texto sem saber o remetente de verdade). Aqui a lib despacha um
-callback por thread pool interno assim que detecta mensagem nova — não é
-polling manual.
+Substitui a versão antiga baseada no wxauto4 (abandonado — ver README).
 
 Uso:
-    python main.py                  # escuta TARGET_CHAT_NAME por LISTEN_DURATION_SECONDS
-    python main.py --test-reply     # além de escutar, envia TEST_MESSAGE (do .env) uma vez no início
-    python main.py --test-reply "oi"  # envia esse texto específico em vez de TEST_MESSAGE
+    python main.py                     # só lê e imprime as mensagens de TARGET_CHAT_NAME
+    python main.py --test-reply        # além de ler, manda TEST_MESSAGE (do .env) antes
+    python main.py --test-reply "oi"   # manda esse texto específico em vez de TEST_MESSAGE
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
-import time
 
+import wechat
 from config import load_config, setup_logging
 
 log = logging.getLogger("main")
@@ -30,14 +26,10 @@ def parse_args() -> argparse.Namespace:
         nargs="?",
         const="__use_config__",
         default=None,
-        help="Envia uma mensagem de teste para TARGET_CHAT_NAME antes de escutar. "
+        help="Envia uma mensagem de teste para TARGET_CHAT_NAME antes de ler. "
         "Sem valor, usa TEST_MESSAGE do .env.",
     )
     return parser.parse_args()
-
-
-def on_message(msg, chat) -> None:
-    log.info("[%s] %s: %s", msg.type, getattr(msg, "sender", "?"), msg.content)
 
 
 def main() -> None:
@@ -45,34 +37,21 @@ def main() -> None:
     config = load_config()
     setup_logging(config.log_level)
 
-    from wxauto4 import WeChat
-
-    wx = WeChat(debug=True)
-    log.info("Conectado. nickname=%s", wx.nickname)
+    log.info("Procurando janela do WeChat...")
+    window = wechat.find_wechat_window()
+    log.info("Conectado: %r", window.window_text())
 
     if args.test_reply is not None:
         text = config.test_message if args.test_reply == "__use_config__" else args.test_reply
         log.info("Enviando mensagem de teste para %s: %r", config.target_chat_name, text)
-        response = wx.SendMsg(text, who=config.target_chat_name)
-        if not response.is_success:
-            raise RuntimeError(f"Falha ao enviar mensagem: {response.get('message')}")
-        log.info("Envio confirmado.")
+        wechat.send_message(window, config.target_chat_name, text)
+        log.info("Enviado.")
 
-    log.info(
-        "Escutando %s por %.0fs (Ctrl+C para sair antes)...",
-        config.target_chat_name,
-        config.listen_duration_seconds,
-    )
-    wx.AddListenChat(config.target_chat_name, on_message)
-    try:
-        end_time = time.monotonic() + config.listen_duration_seconds
-        while time.monotonic() < end_time:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        log.info("Interrompido pelo usuário.")
-    finally:
-        wx.StopListening()
-        log.info("Encerrado.")
+    log.info("Lendo mensagens de '%s'...", config.target_chat_name)
+    messages = wechat.read_messages(window, config.target_chat_name)
+    log.info("%d mensagens de texto encontradas:", len(messages))
+    for text in messages:
+        log.info("  %s", text)
 
 
 if __name__ == "__main__":

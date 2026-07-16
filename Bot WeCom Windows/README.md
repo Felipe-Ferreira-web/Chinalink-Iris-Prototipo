@@ -77,6 +77,28 @@ WeChat já aberto, sem clicar em nada, pra descobrir de verdade os
 nomes/classes da caixa de busca, lista de conversas, campo de mensagem e
 botão de enviar — em vez de adivinhar.
 
+**Seletores confirmados** no dump real (interface em **inglês**, não
+chinês — o cliente do servidor está assim, e é por isso que o fork
+abandonado, com textos de menu em chinês tipo `'粘贴'`, nunca funcionava):
+
+| Elemento | Seletor real |
+|---|---|
+| Item de conversa na sidebar | `auto_id='session_item_<Nome>'`, dentro da lista `auto_id='session_list'` — dá pra clicar direto, sem busca/colar/menu nenhum |
+| Campo de digitar mensagem | `auto_id='chat_input_field'` (Edit) |
+| Botão de enviar | `text='Send'` (classe `mmui::XOutlineButton`) |
+| Lista de mensagens | `auto_id='chat_message_list'`; itens de texto são `class='mmui::ChatTextItemView'` (outros tipos, ex. `ChatItemView`, são só separador de horário) |
+
+Implementado em `wechat.py`: `find_wechat_window()`, `list_sessions()`,
+`open_chat()`, `send_message()`, `read_messages()`. `explore.py` e
+`main.py` foram reescritos em cima disso (a versão antiga, baseada no
+`wxauto4` abandonado, saiu — não tinha por que manter código morto).
+
+**Detalhe de implementação**: a versão instalada do `pywinauto` (0.6.9)
+não aceita `auto_id=` como filtro direto em `.descendants()`/`.children()`
+(só `class_name`/`title`/`control_type` chegam até a condição UIA) —
+`wechat.py` filtra por `auto_id` na mão em Python depois de buscar os
+descendentes, em vez de passar isso como kwarg (que daria `TypeError`).
+
 ## Setup (no Windows Server)
 
 ```powershell
@@ -94,24 +116,24 @@ não um contato real).
 ## Uso
 
 ```powershell
-python inspect_ui.py   # dump da árvore real de controles em ui_dump.txt — sem clicar em nada
+python inspect_ui.py          # dump da árvore real de controles em ui_dump.txt — sem clicar em nada
+python explore.py             # diagnóstico: lista sessões, lê histórico de TARGET_CHAT_NAME — sem enviar nada
+python main.py                # só lê e imprime as mensagens de TARGET_CHAT_NAME
+python main.py --test-reply   # além de ler, manda TEST_MESSAGE pra TARGET_CHAT_NAME antes
 ```
-
-Abra `ui_dump.txt` depois de rodar e procure pelos elementos: caixa de
-busca, lista de conversas na sidebar, campo de digitar mensagem, botão de
-enviar. É a partir desses nomes/classes reais que a automação de
-`SendMsg`/leitura de mensagem vai ser escrita — os scripts antigos
-`explore.py`/`main.py` (que dependiam do `wxauto4` abandonado) ainda
-estão na pasta como referência, mas não rodam mais sem reinstalar aquela
-dependência.
 
 ## Pendências desta etapa
 
-- [ ] Rodar `inspect_ui.py` no servidor e mapear os seletores reais da
-      caixa de busca, lista de conversas, campo de mensagem e botão de
-      enviar.
-- [ ] Escrever `send_message`/`read_new_messages` próprios com
-      `pywinauto`, testados contra o WeChat de verdade (não adivinhados).
+- [ ] Testar `main.py --test-reply` ponta a ponta contra o WeChat real
+      (enviar, aparecer na lista de mensagens).
+- [ ] Testar `send_message`/`read_messages` contra uma conversa com
+      contato real (`WeChat Team`, `Victor` já aparecem na sidebar de
+      teste), não só `File Transfer`.
+- [ ] Implementar leitura de mensagem **nova** em tempo real (hoje
+      `read_messages` lê tudo que já está na tela; falta decidir entre
+      polling comparando com o que já foi visto, ou investigar se dá pra
+      usar `UIA_StructureChangedEventId`/`AutomationEventHandler` do
+      pywinauto pra reagir a mensagem nova sem polling).
 - [ ] Confirmar se a automação também cobre WeCom (cliente corporativo)
       ou só WeChat pessoal.
 - [ ] Testar estabilidade do RDP durante uso prolongado (risco já
