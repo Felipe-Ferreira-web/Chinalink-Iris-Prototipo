@@ -46,6 +46,12 @@ ADD_CONTACTS_MENU_TEXT = "Add Contacts"
 ADD_CONTACTS_WINDOW_TITLE = ("Add Contacts",)
 SEND_FRIEND_REQUEST_WINDOW_TITLE = ("Send Friend Request",)
 USER_NOT_FOUND_TEXT = "User not found"
+CONTACTS_TAB_TEXT = "Contacts"
+MESSAGES_BUTTON_TEXT = "Messages"
+CONTACT_ITEM_CLASS = "mmui::ContactsCellItemView"
+START_GROUP_CHAT_MENU_TEXT = "Start Group Chat"
+START_GROUP_CHAT_WINDOW_TITLE = ("Start Group Chat",)
+GROUP_CONTACT_ROW_CLASS = "mmui::SPSelectionContactRow"
 # Esse servidor é lento pra chamadas UIA (achar a janela chegou a levar 1
 # minuto) — timeout generoso, com retry, em vez de assumir que o elemento
 # já está renderizado logo após uma ação (click, troca de chat etc).
@@ -271,6 +277,109 @@ def add_contact_by_phone(main_window, phone: str, message: str | None = None) ->
     _focus_window(request_window)
     ok_button.click_input()
     return nickname
+
+
+def find_or_start_chat(main_window, contact_name: str) -> str | None:
+    """Abre uma conversa com `contact_name`: tenta a sidebar primeiro (já
+    tem sessão — caminho rápido via `open_chat`); se não achar, busca na
+    aba "Contacts" e usa o botão "Messages" do perfil pra abrir conversa
+    nova com um contato que já existe mas ainda não tem sessão.
+
+    Retorna o nome da conversa aberta, ou `None` se `contact_name` não
+    corresponder a nenhum contato.
+    """
+    if contact_name in list_sessions(main_window):
+        open_chat(main_window, contact_name)
+        return contact_name
+
+    _focus_window(main_window)
+    tab_button = _find_one(
+        main_window, "Aba 'Contacts'", title=CONTACTS_TAB_TEXT, control_type="Button"
+    )
+    tab_button.click_input()
+
+    # A busca da aba Contacts filtra a lista renderizada — a lista é um
+    # Recycler (StickyHeaderRecyclerListView), então um contato fora da
+    # tela pode nem existir na árvore UIA ainda sem filtrar primeiro.
+    search_field = _find_one(main_window, "Campo de busca de contatos", control_type="Edit")
+    search_field.click_input()
+    _set_clipboard_text(contact_name)
+    search_field.type_keys("^v", pause=0.05)
+    time.sleep(0.3)
+
+    matches = [
+        m for m in main_window.descendants(title=contact_name, control_type="ListItem")
+        if m.element_info.class_name == CONTACT_ITEM_CLASS
+    ]
+    if not matches:
+        return None
+
+    _focus_window(main_window)
+    matches[0].click_input()
+
+    messages_button = _find_one(
+        main_window, "Botão 'Messages'", title=MESSAGES_BUTTON_TEXT, control_type="Button"
+    )
+    _focus_window(main_window)
+    messages_button.click_input()
+
+    return get_current_chat_name(main_window)
+
+
+def open_start_group_chat_dialog(main_window):
+    """Abre o diálogo "Start Group Chat" a partir da janela principal."""
+    _focus_window(main_window)
+    shortcuts_button = _find_one(
+        main_window, "Botão 'Shortcuts'", title="Shortcuts", control_type="Button"
+    )
+    shortcuts_button.click_input()
+    _click_by_text(START_GROUP_CHAT_MENU_TEXT)
+    return find_window_by_title(START_GROUP_CHAT_WINDOW_TITLE)
+
+
+def start_group_chat(main_window, contact_names: list[str]) -> str | None:
+    """Cria um grupo com os `contact_names` (nomes exatos, já contatos do
+    WeChat) e confirma. Retorna o nome/label da conversa aberta depois, ou
+    `None` se algum nome não for encontrado na lista de seleção (cancela o
+    diálogo nesse caso, nenhum grupo é criado).
+
+    Confirmado ao vivo: selecionar só 1 nome não cria grupo de verdade —
+    o WeChat só abre a conversa individual com essa pessoa (precisa de
+    2+ nomes pra virar grupo). Não validamos isso aqui, deixamos o
+    próprio WeChat decidir — não é erro da automação.
+    """
+    dialog = open_start_group_chat_dialog(main_window)
+    _focus_window(dialog)
+
+    search_field = _find_one(dialog, "Campo de busca de contatos", control_type="Edit")
+
+    for name in contact_names:
+        _focus_window(dialog)
+        search_field.click_input()
+        search_field.type_keys("^a", pause=0.05)
+        _set_clipboard_text(name)
+        search_field.type_keys("^v", pause=0.05)
+        time.sleep(0.3)
+
+        matches = [
+            m for m in dialog.descendants(title=name, control_type="CheckBox")
+            if m.element_info.class_name == GROUP_CONTACT_ROW_CLASS
+        ]
+        if not matches:
+            cancel_button = _find_one(
+                dialog, "Botão 'Cancel'", title="Cancel", control_type="Button"
+            )
+            _focus_window(dialog)
+            cancel_button.click_input()
+            return None
+        _focus_window(dialog)
+        matches[0].click_input()
+
+    finish_button = _find_one(dialog, "Botão 'Finish'", title="Finish", control_type="Button")
+    _focus_window(dialog)
+    finish_button.click_input()
+
+    return get_current_chat_name(main_window)
 
 
 def open_chat(window, chat_name: str) -> None:

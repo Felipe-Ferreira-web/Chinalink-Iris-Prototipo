@@ -110,7 +110,8 @@ abandonado, com textos de menu em chinês tipo `'粘贴'`, nunca funcionava):
 | Lista de mensagens | `auto_id='chat_message_list'`; itens de texto são `class='mmui::ChatTextItemView'` (outros tipos, ex. `ChatItemView`, são só separador de horário) |
 
 Implementado em `wechat.py`: `find_wechat_window()`, `list_sessions()`,
-`open_chat()`, `send_message()`, `read_messages()`, `add_contact_by_phone()`.
+`open_chat()`, `send_message()`, `read_messages()`, `add_contact_by_phone()`,
+`find_or_start_chat()`, `start_group_chat()`.
 `explore.py` e `main.py` foram reescritos em cima disso (a versão antiga,
 baseada no `wxauto4` abandonado, saiu — não tinha por que manter código
 morto).
@@ -152,6 +153,52 @@ mandar mensagem. Testando logo em seguida com `send_message`, é esperado
 falhar até lá (contato ainda não aparece na sidebar) — combine com quem
 for aceitar antes de testar.
 
+## Fluxo de iniciar conversa com contato existente (`find_or_start_chat`)
+
+Um contato que já existe no WeChat mas ainda não tem sessão na sidebar
+(ex.: pedido de amizade recém-aceito, ou qualquer contato antigo sem
+histórico recente) não é achado por `open_chat` (que só procura
+`session_item_<Nome>`). Confirmado no dump real da aba "Contacts":
+
+| Elemento | Seletor real |
+|---|---|
+| Aba "Contacts" | `text='Contacts'` (classe `mmui::XTabBarItem`), na barra de navegação principal |
+| Campo de busca de contatos | `Edit` classe `mmui::XValidatorTextEdit` (mesma classe usada no diálogo Add Contacts) — filtra a lista ao colar/digitar |
+| Lista de contatos | `auto_id='primary_table_.contact_list'`, classe `mmui::StickyHeaderRecyclerListView` — é um Recycler, itens fora da tela podem não existir na árvore UIA sem filtrar antes |
+| Item de contato | `ListItem` classe `mmui::ContactsCellItemView`, `text=<Nome>` (sem `auto_id` próprio, diferente da sidebar) |
+| Botão "Messages" no perfil | `text='Messages'` — abre/troca pra conversa com esse contato |
+
+`find_or_start_chat()` tenta a sidebar primeiro (`open_chat`, caminho
+rápido pra quem já tem sessão) e só usa esse fluxo da aba Contacts como
+fallback. Retorna o nome da conversa aberta, ou `None` se o nome não
+corresponder a nenhum contato.
+
+## Fluxo de criar grupo (`start_group_chat`)
+
+Confirmado no dump real do diálogo "Start Group Chat" (aberto pelo mesmo
+botão "Shortcuts" usado em "Add Contacts", item de menu "Start Group
+Chat"):
+
+| Elemento | Seletor real |
+|---|---|
+| Diálogo | janela separada, `class='mmui::SessionPickerWindow'`, título contendo `"Start Group Chat"` |
+| Campo de busca de contatos | `Edit` classe `mmui::XValidatorTextEdit` (mesmo padrão de sempre) |
+| Item de contato selecionável | `CheckBox` classe `mmui::SPSelectionContactRow`, `text=<Nome>` — clicar marca/desmarca |
+| Contador de selecionados | `auto_id='sp_choice_contact_list'`, texto tipo `"N contact(s) selected"` |
+| Botão de confirmar | `auto_id='confirm_btn'`, `text='Finish'` |
+| Botão de cancelar | `auto_id='cancel_btn'`, `text='Cancel'` |
+
+**Confirmado ao vivo, não é bug**: selecionar só 1 nome e confirmar não
+cria grupo de verdade — o WeChat abre a conversa individual com essa
+pessoa (grupo de verdade parece exigir 2+ nomes). `start_group_chat()`
+não valida quantidade mínima — deixa o próprio WeChat decidir, e
+`get_current_chat_name()` sempre reflete o que realmente abriu.
+
+**Ainda não confirmado ao vivo**: se buscar/selecionar um segundo nome
+reseta a busca mantendo a primeira seleção marcada, ou se precisa de
+outro passo entre cada seleção — só testado com 1 nome até agora. Testar
+com 2+ antes de confiar nisso pra grupos maiores.
+
 ## Histórico: integração com o server Django (Busca de Suppliers)
 
 Chegamos a implementar uma integração completa com o server Django do
@@ -189,18 +236,32 @@ python main.py --test-reply                    # além de ler, manda TEST_MESSAG
 python main.py --echo-last                     # lê a última mensagem de TARGET_CHAT_NAME e reenvia ela mesma
 python main.py --test-add-contact <telefone>          # testa add_contact_by_phone isolado, usa TEST_MESSAGE
 python main.py --test-add-contact <telefone> "texto"  # idem, com mensagem específica
+python main.py --test-start-chat <nome>                # testa find_or_start_chat com um contato já existente
+python main.py --test-start-group <nome1> <nome2> ...   # testa start_group_chat com 2+ contatos já existentes
 ```
 
 ## Pendências
 
-- [ ] Testar `main.py --test-add-contact` ponta a ponta contra o WeChat
-      real (`add_contact_by_phone` ainda não foi exercitado de verdade,
-      só os seletores foram confirmados via dump).
-- [ ] Implementar leitura de mensagem **nova** em tempo real (hoje
-      `read_messages` lê tudo que já está na tela; falta decidir entre
-      polling comparando com o que já foi visto, ou investigar se dá pra
-      usar `UIA_StructureChangedEventId`/`AutomationEventHandler` do
-      pywinauto pra reagir a mensagem nova sem polling).
+Testar ponta a ponta contra o WeChat real (implementado, seletores
+confirmados via dump, mas sem execução completa confirmada ainda):
+- [ ] `main.py --test-add-contact` (`add_contact_by_phone`).
+- [ ] `main.py --test-start-chat` (`find_or_start_chat`).
+- [ ] `main.py --test-start-group` com 2+ nomes (`start_group_chat` —
+      só testado até agora com 1 nome, que confirmou não formar grupo).
+
+Funções ainda não implementadas (próximos passos do roteiro atual):
+- [ ] Responder mensagem nova **em qualquer conversa** (não só uma fixa)
+      — precisa mapear o indicador de "não lida" por `session_item_` na
+      sidebar antes de escrever `list_unread_sessions`.
+- [ ] Enviar documento — botão já confirmado (`text='Send File'`, na
+      barra ao lado de `chat_input_field`), falta mapear o que abre ao
+      clicar (diálogo nativo de arquivo, ou aceita paste de
+      `CF_HDROP`?) antes de escrever `send_file`.
+- [ ] Baixar documento recebido e devolver o caminho no disco (sem
+      extrair conteúdo) — precisa mapear a bolha de mensagem tipo
+      arquivo e seu menu de contexto.
+
+Outros itens, sem prazo definido:
 - [ ] Confirmar se a automação também cobre WeCom (cliente corporativo)
       ou só WeChat pessoal.
 - [ ] Testar estabilidade do RDP durante uso prolongado (risco já
@@ -211,6 +272,3 @@ python main.py --test-add-contact <telefone> "texto"  # idem, com mensagem espec
       de monitor virtual.
 - [ ] Avaliar risco de detecção de login por região/IP (servidor fora da
       China) antes de qualquer teste com conta real de produção.
-- [ ] Próximas funções básicas a mapear (uma etapa de cada vez, decidido
-      conforme a necessidade for surgindo): grupos, envio de
-      arquivo/imagem, moments, etc.

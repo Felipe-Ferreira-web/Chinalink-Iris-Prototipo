@@ -9,6 +9,8 @@ Uso:
     python main.py --echo-last         # lê a última mensagem de TARGET_CHAT_NAME e reenvia ela mesma
     python main.py --test-add-contact <telefone>          # testa add_contact_by_phone, usa TEST_MESSAGE
     python main.py --test-add-contact <telefone> "texto"  # idem, com mensagem específica
+    python main.py --test-start-chat <nome>                # testa find_or_start_chat com um contato já existente
+    python main.py --test-start-group <nome1> <nome2> ...  # testa start_group_chat com 2+ contatos já existentes
 """
 
 from __future__ import annotations
@@ -45,6 +47,19 @@ def parse_args() -> argparse.Namespace:
         help="Testa add_contact_by_phone: adiciona TELEFONE como contato novo "
         "e manda MENSAGEM (ou TEST_MESSAGE do .env, se omitida).",
     )
+    parser.add_argument(
+        "--test-start-chat",
+        metavar="NOME",
+        help="Testa find_or_start_chat: abre conversa com um contato já existente "
+        "chamado NOME (com ou sem sessão na sidebar ainda).",
+    )
+    parser.add_argument(
+        "--test-start-group",
+        nargs="+",
+        metavar="NOME",
+        help="Testa start_group_chat: cria grupo com os NOME(s) informados "
+        "(contatos já existentes; precisa de 2+ pra virar grupo de verdade).",
+    )
     return parser.parse_args()
 
 
@@ -68,6 +83,27 @@ def main() -> None:
         log.info("Pedido de amizade enviado (apelido no WeChat: %r). Tentando mandar mensagem...", nickname)
         wechat.send_message(window, nickname, text)
         log.info("Mensagem enviada para %s.", nickname)
+        return
+
+    if args.test_start_chat is not None:
+        log.info("Abrindo conversa com %r...", args.test_start_chat)
+        chat_name = wechat.find_or_start_chat(window, args.test_start_chat)
+        if not chat_name:
+            log.warning("%r não encontrado nos contatos.", args.test_start_chat)
+            return
+        log.info("Conversa aberta: %r", chat_name)
+        return
+
+    if args.test_start_group is not None:
+        log.info("Criando grupo com %r...", args.test_start_group)
+        chat_name = wechat.start_group_chat(window, args.test_start_group)
+        if not chat_name:
+            log.warning(
+                "Algum nome em %r não foi encontrado nos contatos — diálogo cancelado.",
+                args.test_start_group,
+            )
+            return
+        log.info("Conversa de grupo aberta: %r", chat_name)
         return
 
     if args.test_reply is not None:
