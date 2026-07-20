@@ -29,6 +29,7 @@ dumps `ui_dump_add_contact.txt`/`ui_dump_send_friend_request.txt`):
 
 from __future__ import annotations
 
+import random
 import re
 import time
 from pathlib import Path
@@ -189,6 +190,13 @@ def get_current_chat_name(window) -> str | None:
     return None
 
 
+def _random_delay(low: float = 0.3, high: float = 1.0) -> None:
+    """Pausa um tempo aleatório entre `low` e `high` segundos — em vez de um
+    sleep fixo (cadência sempre igual entre ações, mais fácil de bater como
+    padrão de bot), varia a cada chamada."""
+    time.sleep(random.uniform(low, high))
+
+
 def _focus_window(window) -> None:
     # click_input() faz um clique de mouse de verdade nas coordenadas de
     # tela — sem trazer a janela pra frente antes (só faz isso sozinho se
@@ -196,7 +204,7 @@ def _focus_window(window) -> None:
     # terminal rodando este script está por cima), o clique cai no que
     # estiver visível ali, não no WeChat. Refoca antes de CADA ação.
     window.set_focus()
-    time.sleep(0.3)
+    _random_delay()
 
 
 def _click_by_text(text: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
@@ -273,9 +281,15 @@ def add_contact_by_phone(main_window, phone: str, message: str | None = None) ->
     search_field = _find_one(dialog, "Campo de busca", control_type="Edit")
     _focus_window(dialog)
     search_field.click_input()
+    _random_delay()
+    # Diálogo acabou de abrir: o 1º clique só ativa a janela (o cursor
+    # aparece no campo, mas o clique em si não conta como foco real pra
+    # digitação) — um 2º clique de verdade é o que garante o campo pronto
+    # pra receber o paste.
+    search_field.click_input()
     _set_clipboard_text(phone)
     search_field.type_keys("^v", pause=0.05)
-    time.sleep(0.3)
+    _random_delay()
 
     search_button = _find_one(dialog, "Botão 'Search'", title="Search", control_type="Button")
     _focus_window(dialog)
@@ -328,7 +342,7 @@ def add_contact_by_phone(main_window, phone: str, message: str | None = None) ->
         message_field.type_keys("^a", pause=0.05)
         _set_clipboard_text(message)
         message_field.type_keys("^v", pause=0.05)
-        time.sleep(0.3)
+        _random_delay()
 
     ok_button = _find_one(request_window, "Botão 'OK'", title="OK", control_type="Button")
     _focus_window(request_window)
@@ -363,7 +377,7 @@ def find_or_start_chat(main_window, contact_name: str) -> str | None:
     search_field.click_input()
     _set_clipboard_text(contact_name)
     search_field.type_keys("^v", pause=0.05)
-    time.sleep(0.3)
+    _random_delay()
 
     matches = [
         m for m in main_window.descendants(title=contact_name, control_type="ListItem")
@@ -416,7 +430,7 @@ def start_group_chat(main_window, contact_names: list[str]) -> str | None:
         search_field.type_keys("^a", pause=0.05)
         _set_clipboard_text(name)
         search_field.type_keys("^v", pause=0.05)
-        time.sleep(0.3)
+        _random_delay()
 
         matches = [
             m for m in dialog.descendants(title=name, control_type="CheckBox")
@@ -460,7 +474,7 @@ def send_message(window, chat_name: str, text: str) -> None:
     input_field.click_input()
     _set_clipboard_text(text)
     input_field.type_keys("^v", pause=0.05)
-    time.sleep(1.0)  # servidor lento; dá tempo do paste refletir antes de enviar
+    _random_delay(0.8, 1.5)  # servidor lento; dá tempo do paste refletir antes de enviar
     send_button = _find_one(window, "Botão 'Send'", title="Send", control_type="Button")
     _focus_window(window)
     send_button.click_input()
@@ -490,7 +504,7 @@ def send_file(window, chat_name: str, filepath: str) -> None:
     filename_field.type_keys("^a", pause=0.05)
     _set_clipboard_text(filepath)
     filename_field.type_keys("^v", pause=0.05)
-    time.sleep(0.3)
+    _random_delay()
 
     open_button = _find_one(
         dialog, "Botão 'Open'", auto_id=DIALOG_PRIMARY_BUTTON_ID, control_type="Button"
@@ -545,7 +559,7 @@ def download_last_document(window, chat_name: str, save_dir: str) -> str:
     filename_field.type_keys("^a", pause=0.05)
     _set_clipboard_text(save_path)
     filename_field.type_keys("^v", pause=0.05)
-    time.sleep(0.3)
+    _random_delay()
 
     save_button = _find_one(
         dialog, "Botão 'Save'", auto_id=DIALOG_PRIMARY_BUTTON_ID, control_type="Button"
