@@ -1,5 +1,4 @@
 .env
 __pycache__/
+.pytest_cache/
 venv/
-
-# Dump da árvore de UI pode conter nomes de contato/texto de mensagem reais.

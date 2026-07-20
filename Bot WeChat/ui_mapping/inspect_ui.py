@@ -12,12 +12,12 @@ Dump implementado na mão (não usa print_control_identifiers) porque esse
 método só existe em WindowSpecification (via Application().connect()),
 não nos objetos crus que Desktop().windows() devolve.
 
-Uso:
-    python inspect_ui.py                    # janela principal do WeChat
-    python inspect_ui.py --title "Add Contact"   # qualquer outra janela de nível
-                                                  # superior aberta no momento
-                                                  # (diálogos como "Add Contacts",
-                                                  # "Send Friend Request")
+Uso (de qualquer diretório):
+    python ui_mapping/inspect_ui.py                  # janela principal
+    python ui_mapping/inspect_ui.py --title "Add Contact"  # outra janela
+                                                             # (diálogos)
+
+Dumps sempre vão pra ui_mapping/dumps/, nunca pro diretório atual.
 """
 
 from __future__ import annotations
@@ -25,13 +25,19 @@ from __future__ import annotations
 import argparse
 import logging
 import re
+import sys
+from pathlib import Path
 
 from pywinauto import Desktop
+
+# Script vive em ui_mapping/; config.py está um nível acima.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import load_config, setup_logging
 
 log = logging.getLogger("inspect_ui")
 
+DUMPS_DIR = Path(__file__).resolve().parent / "dumps"
 DEFAULT_OUTPUT_FILE = "ui_dump.txt"
 TITLE_NEEDLES = ("Weixin", "WeChat", "微信")
 # Classes de janela de outros apps que só coincidem no título (ex.: uma aba
@@ -149,15 +155,17 @@ def main() -> None:
         )
 
     window = candidates[0]
+    DUMPS_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = DUMPS_DIR / output_file
     log.info(
         "Usando a candidata 0 (%r, class=%s). Dumpando árvore de controles em %s...",
         window.window_text(),
         window.element_info.class_name,
-        output_file,
+        output_path,
     )
-    with open(output_file, "w", encoding="utf-8") as out:
+    with open(output_path, "w", encoding="utf-8") as out:
         dump_node(window, 0, out)
-    log.info("Pronto. Abra %s e procura pelos elementos relevantes.", output_file)
+    log.info("Pronto. Abra %s e procura pelos elementos relevantes.", output_path)
 
 
 if __name__ == "__main__":

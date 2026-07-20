@@ -110,9 +110,7 @@ def main() -> None:
         if not nickname:
             log.warning("Telefone %s não corresponde a nenhum contato do WeChat.", phone)
             return
-        log.info("Pedido de amizade enviado (apelido no WeChat: %r). Tentando mandar mensagem...", nickname)
-        wechat.send_message(window, nickname, text)
-        log.info("Mensagem enviada para %s.", nickname)
+        log.info("Pedido de amizade enviado (apelido no WeChat: %r, mensagem: %r).", nickname, text)
         return
 
     if args.test_start_chat is not None:

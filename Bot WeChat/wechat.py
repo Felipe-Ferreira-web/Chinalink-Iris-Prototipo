@@ -1,5 +1,6 @@
 """Automação mínima do WeChat via pywinauto, em cima de seletores REAIS
-inspecionados com inspect_ui.py (ver ui_dump.txt) — não adivinhados.
+inspecionados com ui_mapping/inspect_ui.py (ver ui_mapping/dumps/) — não
+adivinhados.
 
 Cobre só o que o Iris precisa: abrir uma conversa, enviar mensagem, ler
 mensagens. Não tenta replicar a API inteira de um "wxauto" (ver README,

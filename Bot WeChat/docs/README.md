@@ -17,7 +17,7 @@ Mapear o máximo possível das funções básicas do WeChat (ler/enviar
 mensagem, adicionar contato por telefone, e o que mais for surgindo) pra
 automatizar o fluxo padrão de uso — por etapas, testando cada função
 contra o WeChat real antes de seguir pra próxima. Nunca adivinhar
-seletor: sempre a partir de dump real da UI (`inspect_ui.py`).
+seletor: sempre a partir de dump real da UI (`ui_mapping/inspect_ui.py`).
 
 ## Por que Windows + UI Automation
 
@@ -93,7 +93,7 @@ procedência duvidosa. Em vez de replicar a API inteira de um "wxauto"
 (moments, grupos, arquivos, tudo), escrevemos só o que precisamos, função
 por função.
 
-**Primeiro passo pra cada função nova**: `inspect_ui.py` dumpa a árvore
+**Primeiro passo pra cada função nova**: `ui_mapping/inspect_ui.py` dumpa a árvore
 real de controles do WeChat já aberto, sem clicar em nada, pra descobrir
 de verdade os nomes/classes dos elementos envolvidos — em vez de
 adivinhar.
@@ -127,7 +127,7 @@ descendentes, em vez de passar isso como kwarg (que daria `TypeError`).
 
 Um número de telefone que ainda não é contato do WeChat precisa passar
 pelo diálogo "Add Contacts": buscar o telefone e enviar pedido de
-amizade. Confirmado nos dumps reais (`inspect_ui.py --title "Add
+amizade. Confirmado nos dumps reais (`ui_mapping/inspect_ui.py --title "Add
 Contact"` / `--title "Send Friend Request"`):
 
 | Elemento | Seletor real |
@@ -297,8 +297,8 @@ não um contato real).
 ## Uso
 
 ```powershell
-python inspect_ui.py                          # dump da janela principal em ui_dump.txt — sem clicar em nada
-python inspect_ui.py --title "Add Contact"     # dump de qualquer outra janela aberta (diálogos)
+python ui_mapping/inspect_ui.py                          # dump da janela principal em ui_mapping/dumps/ — sem clicar em nada
+python ui_mapping/inspect_ui.py --title "Add Contact"     # dump de qualquer outra janela aberta (diálogos)
 python explore.py                             # diagnóstico: lista sessões, lê histórico de TARGET_CHAT_NAME
 python main.py                                 # só lê e imprime as mensagens de TARGET_CHAT_NAME
 python main.py --test-reply                    # além de ler, manda TEST_MESSAGE pra TARGET_CHAT_NAME antes
