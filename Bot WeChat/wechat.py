@@ -285,10 +285,12 @@ def add_contact_by_phone(main_window, phone: str, message: str | None = None) ->
     # Diálogo acabou de abrir: o 1º clique só ativa a janela (o cursor
     # aparece no campo, mas o clique em si não conta como foco real pra
     # digitação) — um 2º clique de verdade é o que garante o campo pronto
-    # pra receber o paste.
+    # pra receber input.
     search_field.click_input()
-    _set_clipboard_text(phone)
-    search_field.type_keys("^v", pause=0.05)
+    # Campo ainda ficava vazio mesmo focado com Ctrl+V (clipboard) — esse
+    # campo de busca especificamente não reage a paste. `phone` é só
+    # dígito, então digita direto via keystrokes em vez de clipboard.
+    search_field.type_keys(phone, pause=0.05)
     _random_delay()
 
     search_button = _find_one(dialog, "Botão 'Search'", title="Search", control_type="Button")
