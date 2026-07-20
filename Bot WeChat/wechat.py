@@ -29,7 +29,9 @@ dumps `ui_dump_add_contact.txt`/`ui_dump_send_friend_request.txt`):
 
 from __future__ import annotations
 
+import re
 import time
+from pathlib import Path
 
 import win32clipboard
 import win32con
@@ -52,6 +54,24 @@ CONTACT_ITEM_CLASS = "mmui::ContactsCellItemView"
 START_GROUP_CHAT_MENU_TEXT = "Start Group Chat"
 START_GROUP_CHAT_WINDOW_TITLE = ("Start Group Chat",)
 GROUP_CONTACT_ROW_CLASS = "mmui::SPSelectionContactRow"
+SEND_FILE_BUTTON_TEXT = "Send File"
+SELECT_FILE_WINDOW_TITLE = ("Select File",)
+# "File name:" é o rótulo do campo de caminho tanto no diálogo de abrir
+# quanto no de salvar — mais estável que auto_id, que muda entre eles
+# (1148 no de abrir, 1001 no de salvar, confirmado nos dumps reais).
+FILE_NAME_FIELD_LABEL = "File name:"
+# auto_id='1' é o botão de ação primária (Open/Save) nos dois diálogos —
+# também confirmado igual nos dois dumps, ao contrário do texto do botão.
+DIALOG_PRIMARY_BUTTON_ID = "1"
+FILE_BUBBLE_CLASS = "mmui::ChatBubbleItemView"
+NOT_DOWNLOADED_MARKER = "Not Downloaded"
+DOWNLOAD_TO_MENU_PREFIX = "Download to"
+SAVE_AS_MENU_PREFIX = "Save as"
+SAVE_DIALOG_WINDOW_TITLE = ("Save as", "Download to")
+# O WeChat embute a contagem de não lidas como uma linha própria "[N]" no
+# texto do item da sidebar, logo após o nome (ex.: 'Felipe\n[1]\nAoba\n13:48\n')
+# — confirmado no dump real, não é um badge/elemento separado.
+UNREAD_MARKER_RE = re.compile(r"^\[(\d+)\]$")
 # Esse servidor é lento pra chamadas UIA (achar a janela chegou a levar 1
 # minuto) — timeout generoso, com retry, em vez de assumir que o elemento
 # já está renderizado logo após uma ação (click, troca de chat etc).
@@ -147,6 +167,21 @@ def list_sessions(window) -> list[str]:
     return names
 
 
+def list_unread_sessions(window) -> list[str]:
+    """Retorna os nomes dos itens da sidebar com mensagem não lida (ver
+    `UNREAD_MARKER_RE`)."""
+    session_list = _find_one(window, "Lista de conversas", auto_id="session_list")
+    names = []
+    for item in session_list.children(control_type="ListItem"):
+        auto_id = item.element_info.automation_id
+        if not auto_id.startswith(SESSION_ITEM_PREFIX):
+            continue
+        lines = item.window_text().split("\n")
+        if len(lines) > 1 and UNREAD_MARKER_RE.match(lines[1]):
+            names.append(auto_id[len(SESSION_ITEM_PREFIX):])
+    return names
+
+
 def get_current_chat_name(window) -> str | None:
     for item in window.descendants(control_type="Text"):
         if item.element_info.automation_id.endswith(CURRENT_CHAT_LABEL_SUFFIX):
@@ -186,12 +221,34 @@ def _click_by_text(text: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
         time.sleep(FIND_POLL_INTERVAL_SECONDS)
 
 
+def _click_menu_item_by_prefix(text_prefix: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
+    """Como `_click_by_text`, mas casa por prefixo em vez de texto exato —
+    usado pros itens "Download to…"/"Save as…" do menu de contexto de
+    arquivo, cujo caractere de reticências real (confirmado só no título
+    do diálogo resultante, '…', não '...') não é garantido bater exato
+    no texto do item de menu em si.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        for window in Desktop(backend="uia").windows():
+            try:
+                matches = [d for d in window.descendants() if d.window_text().startswith(text_prefix)]
+            except Exception:
+                continue
+            if matches:
+                matches[0].click_input()
+                return
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"Item de menu começando com {text_prefix!r} não encontrado.")
+        time.sleep(FIND_POLL_INTERVAL_SECONDS)
+
+
 def open_add_contact_dialog(main_window):
     """Abre o diálogo "Add Contacts" a partir da janela principal do WeChat."""
-    _focus_window(main_window)
     shortcuts_button = _find_one(
         main_window, "Botão 'Shortcuts'", title="Shortcuts", control_type="Button"
     )
+    _focus_window(main_window)
     shortcuts_button.click_input()
     _click_by_text(ADD_CONTACTS_MENU_TEXT)
     return find_window_by_title(ADD_CONTACTS_WINDOW_TITLE)
@@ -212,9 +269,9 @@ def add_contact_by_phone(main_window, phone: str, message: str | None = None) ->
     pra `send_message` funcionar (ver README).
     """
     dialog = open_add_contact_dialog(main_window)
-    _focus_window(dialog)
 
     search_field = _find_one(dialog, "Campo de busca", control_type="Edit")
+    _focus_window(dialog)
     search_field.click_input()
     _set_clipboard_text(phone)
     search_field.type_keys("^v", pause=0.05)
@@ -261,12 +318,12 @@ def add_contact_by_phone(main_window, phone: str, message: str | None = None) ->
     add_button.click_input()
 
     request_window = find_window_by_title(SEND_FRIEND_REQUEST_WINDOW_TITLE)
-    _focus_window(request_window)
 
     if message is not None:
         message_field = _find_one(
             request_window, "Campo de mensagem do pedido", control_type="Edit"
         )
+        _focus_window(request_window)
         message_field.click_input()
         message_field.type_keys("^a", pause=0.05)
         _set_clipboard_text(message)
@@ -292,16 +349,17 @@ def find_or_start_chat(main_window, contact_name: str) -> str | None:
         open_chat(main_window, contact_name)
         return contact_name
 
-    _focus_window(main_window)
     tab_button = _find_one(
         main_window, "Aba 'Contacts'", title=CONTACTS_TAB_TEXT, control_type="Button"
     )
+    _focus_window(main_window)
     tab_button.click_input()
 
     # A busca da aba Contacts filtra a lista renderizada — a lista é um
     # Recycler (StickyHeaderRecyclerListView), então um contato fora da
     # tela pode nem existir na árvore UIA ainda sem filtrar primeiro.
     search_field = _find_one(main_window, "Campo de busca de contatos", control_type="Edit")
+    _focus_window(main_window)
     search_field.click_input()
     _set_clipboard_text(contact_name)
     search_field.type_keys("^v", pause=0.05)
@@ -328,10 +386,10 @@ def find_or_start_chat(main_window, contact_name: str) -> str | None:
 
 def open_start_group_chat_dialog(main_window):
     """Abre o diálogo "Start Group Chat" a partir da janela principal."""
-    _focus_window(main_window)
     shortcuts_button = _find_one(
         main_window, "Botão 'Shortcuts'", title="Shortcuts", control_type="Button"
     )
+    _focus_window(main_window)
     shortcuts_button.click_input()
     _click_by_text(START_GROUP_CHAT_MENU_TEXT)
     return find_window_by_title(START_GROUP_CHAT_WINDOW_TITLE)
@@ -349,7 +407,6 @@ def start_group_chat(main_window, contact_names: list[str]) -> str | None:
     próprio WeChat decidir — não é erro da automação.
     """
     dialog = open_start_group_chat_dialog(main_window)
-    _focus_window(dialog)
 
     search_field = _find_one(dialog, "Campo de busca de contatos", control_type="Edit")
 
@@ -407,6 +464,96 @@ def send_message(window, chat_name: str, text: str) -> None:
     send_button = _find_one(window, "Botão 'Send'", title="Send", control_type="Button")
     _focus_window(window)
     send_button.click_input()
+
+
+def send_file(window, chat_name: str, filepath: str) -> None:
+    """Manda `filepath` (caminho completo no disco) como arquivo pra
+    `chat_name`. O botão "Send File" abre um diálogo nativo do Windows
+    ("Select File", classe #32770, não é uma janela mmui do WeChat) —
+    cola o caminho completo no campo de nome de arquivo em vez de
+    navegar visualmente até lá.
+    """
+    open_chat(window, chat_name)
+    send_file_button = _find_one(
+        window, "Botão 'Send File'", title=SEND_FILE_BUTTON_TEXT, control_type="Button"
+    )
+    _focus_window(window)
+    send_file_button.click_input()
+
+    dialog = find_window_by_title(SELECT_FILE_WINDOW_TITLE)
+
+    filename_field = _find_one(
+        dialog, "Campo de nome de arquivo", title=FILE_NAME_FIELD_LABEL, control_type="Edit"
+    )
+    _focus_window(dialog)
+    filename_field.click_input()
+    filename_field.type_keys("^a", pause=0.05)
+    _set_clipboard_text(filepath)
+    filename_field.type_keys("^v", pause=0.05)
+    time.sleep(0.3)
+
+    open_button = _find_one(
+        dialog, "Botão 'Open'", auto_id=DIALOG_PRIMARY_BUTTON_ID, control_type="Button"
+    )
+    _focus_window(dialog)
+    open_button.click_input()
+
+
+def download_last_document(window, chat_name: str, save_dir: str) -> str:
+    """Baixa o arquivo mais recente em `chat_name` pra dentro de `save_dir`
+    e devolve o caminho completo salvo. Não extrai conteúdo do arquivo —
+    só garante o download (ver README).
+
+    Clicar direto na bolha já baixa E abre no app padrão do sistema (ruim
+    pra automação) — em vez disso, clica com o botão direito e usa
+    "Download to…" (arquivo ainda não baixado) ou "Save as…" (já
+    baixado/cache), que abrem o mesmo tipo de diálogo nativo do Windows
+    usado em `send_file`, só em modo salvar. O estado (baixado ou não) já
+    vem no próprio texto da bolha (`NOT_DOWNLOADED_MARKER`), não precisa
+    adivinhar qual opção vai aparecer no menu.
+    """
+    open_chat(window, chat_name)
+    message_list = _find_one(window, "Lista de mensagens", auto_id="chat_message_list")
+
+    file_bubbles = [
+        item for item in message_list.children(control_type="ListItem")
+        if item.element_info.class_name == FILE_BUBBLE_CLASS
+    ]
+    if not file_bubbles:
+        raise RuntimeError(f"Nenhuma mensagem de arquivo encontrada em {chat_name!r}.")
+
+    bubble = file_bubbles[-1]
+    bubble_text = bubble.window_text()
+    lines = bubble_text.split("\n")
+    filename = lines[1] if len(lines) > 1 else None
+    if not filename:
+        raise RuntimeError(f"Não consegui ler o nome do arquivo na bolha: {bubble_text!r}")
+    not_downloaded = NOT_DOWNLOADED_MARKER in bubble_text
+
+    _focus_window(window)
+    bubble.right_click_input()
+    _click_menu_item_by_prefix(DOWNLOAD_TO_MENU_PREFIX if not_downloaded else SAVE_AS_MENU_PREFIX)
+
+    dialog = find_window_by_title(SAVE_DIALOG_WINDOW_TITLE)
+
+    save_path = str(Path(save_dir) / filename)
+    filename_field = _find_one(
+        dialog, "Campo de nome de arquivo", title=FILE_NAME_FIELD_LABEL, control_type="Edit"
+    )
+    _focus_window(dialog)
+    filename_field.click_input()
+    filename_field.type_keys("^a", pause=0.05)
+    _set_clipboard_text(save_path)
+    filename_field.type_keys("^v", pause=0.05)
+    time.sleep(0.3)
+
+    save_button = _find_one(
+        dialog, "Botão 'Save'", auto_id=DIALOG_PRIMARY_BUTTON_ID, control_type="Button"
+    )
+    _focus_window(dialog)
+    save_button.click_input()
+
+    return save_path
 
 
 def read_messages(window, chat_name: str | None = None) -> list[str]:

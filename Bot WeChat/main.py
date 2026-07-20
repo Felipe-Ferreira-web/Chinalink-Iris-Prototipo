@@ -11,15 +11,22 @@ Uso:
     python main.py --test-add-contact <telefone> "texto"  # idem, com mensagem específica
     python main.py --test-start-chat <nome>                # testa find_or_start_chat com um contato já existente
     python main.py --test-start-group <nome1> <nome2> ...  # testa start_group_chat com 2+ contatos já existentes
+    python main.py --test-send-file <nome> <caminho>        # testa send_file com um arquivo local
+    python main.py --watch-reply                            # vigia todas as conversas, responde mensagem nova com TEST_MESSAGE
+    python main.py --watch-reply "texto"                    # idem, com texto específico
+    python main.py --test-download-last-file <nome> <pasta>  # testa download_last_document
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import time
 
 import wechat
 from config import load_config, setup_logging
+
+WATCH_POLL_INTERVAL_SECONDS = 5
 
 log = logging.getLogger("main")
 
@@ -59,6 +66,29 @@ def parse_args() -> argparse.Namespace:
         metavar="NOME",
         help="Testa start_group_chat: cria grupo com os NOME(s) informados "
         "(contatos já existentes; precisa de 2+ pra virar grupo de verdade).",
+    )
+    parser.add_argument(
+        "--test-send-file",
+        nargs=2,
+        metavar=("NOME", "CAMINHO"),
+        help="Testa send_file: manda o arquivo em CAMINHO (local, caminho completo) "
+        "pra conversa NOME.",
+    )
+    parser.add_argument(
+        "--watch-reply",
+        nargs="?",
+        const="__use_config__",
+        default=None,
+        help="Vigia todas as conversas (list_unread_sessions) e responde mensagem "
+        "nova com esse texto (ou TEST_MESSAGE do .env, se omitido). Loop contínuo, "
+        "Ctrl+C pra sair.",
+    )
+    parser.add_argument(
+        "--test-download-last-file",
+        nargs=2,
+        metavar=("NOME", "PASTA"),
+        help="Testa download_last_document: baixa o arquivo mais recente de NOME "
+        "pra dentro de PASTA.",
     )
     return parser.parse_args()
 
@@ -104,6 +134,43 @@ def main() -> None:
             )
             return
         log.info("Conversa de grupo aberta: %r", chat_name)
+        return
+
+    if args.test_send_file is not None:
+        chat_name, filepath = args.test_send_file
+        log.info("Mandando %r pra %r...", filepath, chat_name)
+        wechat.send_file(window, chat_name, filepath)
+        log.info("Enviado.")
+        return
+
+    if args.test_download_last_file is not None:
+        chat_name, save_dir = args.test_download_last_file
+        log.info("Baixando arquivo mais recente de %r pra %r...", chat_name, save_dir)
+        save_path = wechat.download_last_document(window, chat_name, save_dir)
+        log.info("Salvo em: %s", save_path)
+        return
+
+    if args.watch_reply is not None:
+        text = config.test_message if args.watch_reply == "__use_config__" else args.watch_reply
+        log.info(
+            "Vigiando todas as conversas (a cada %ds). Ctrl+C pra sair.",
+            WATCH_POLL_INTERVAL_SECONDS,
+        )
+        seen_counts: dict[str, int] = {}
+        try:
+            while True:
+                for chat_name in wechat.list_unread_sessions(window):
+                    messages = wechat.read_messages(window, chat_name)
+                    seen = seen_counts.get(chat_name, 0)
+                    new_messages = messages[seen:]
+                    seen_counts[chat_name] = len(messages)
+                    if new_messages:
+                        log.info("Mensagem(ns) nova(s) em %r: %r", chat_name, new_messages)
+                        wechat.send_message(window, chat_name, text)
+                        log.info("Respondido em %r.", chat_name)
+                time.sleep(WATCH_POLL_INTERVAL_SECONDS)
+        except KeyboardInterrupt:
+            log.info("Encerrando.")
         return
 
     if args.test_reply is not None:

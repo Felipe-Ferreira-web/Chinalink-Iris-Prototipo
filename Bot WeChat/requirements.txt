@@ -7,3 +7,8 @@
 # de verdade (ui/inspect_ui.py).
 pywinauto>=0.6.8
 python-dotenv>=1.0.0
+
+# Testes em tests/ (regressão sobre a lógica de wechat.py, com pywinauto
+# mockado — a verificação real é feita manualmente no servidor, contra
+# o WeChat de verdade; ver tests/README ou o próprio teste de cada função).
+pytest>=8.0.0

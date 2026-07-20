@@ -42,72 +42,38 @@ completas.
 |---|---|
 | `find_or_start_chat(main_window, contact_name)` | Implementada (aba Contacts + botão "Messages"). **Não testada ao vivo ainda.** |
 | `start_group_chat(main_window, contact_names)` | Implementada. Testada com 1 nome só: confirmado que 1 pessoa não forma grupo de verdade (abre conversa individual) — **ainda não testada com 2+ nomes**. |
+| `send_file(window, chat_name, filepath)` | Implementada (botão "Send File" → diálogo nativo `#32770` "Select File" → cola caminho, clica "Open"). **Não testada ao vivo ainda.** |
+| `list_unread_sessions(window)` | Implementada (lê marcador `[N]` embutido no texto do `session_item_`). **Não testada ao vivo ainda.** Usada pelo novo `main.py --watch-reply` (loop, vigia sidebar inteira, responde mensagem nova, Ctrl+C sai). |
+| `download_last_document(window, chat_name, save_dir)` | Implementada — clica direito na bolha (`class='mmui::ChatBubbleItemView'`), decide entre "Download to…"/"Save as…" lendo o estado direto do texto da bolha (`Not Downloaded` presente ou não), preenche o mesmo tipo de diálogo nativo do `send_file` em modo salvar. **Só testado ao vivo o caminho "já baixado" (Save as…); "Download to…" ainda não foi exercitado.** |
 | `add_contact_by_phone` | Já existia antes de hoje, implementada. **Ainda não testada ao vivo** (item pendente de antes). |
 | `send_message`/`read_messages`/`open_chat`/`list_sessions` | Já confirmadas funcionando ao vivo em sessão anterior. |
 
+**Todas as 6 funções pedidas no início da sessão (adicionar contato,
+iniciar conversa, enviar mensagem, responder mensagem nova, enviar
+documento, baixar documento) estão implementadas.** O que falta agora é
+só rodar os testes ao vivo — nenhuma delas foi exercitada de ponta a
+ponta contra o WeChat real ainda, exceto `send_message`/`read_messages`/
+`open_chat` (de sessão anterior) e a metade "já baixado" do
+`download_last_document`.
+
 Novos flags de teste em `main.py`: `--test-start-chat NOME`,
-`--test-start-group NOME1 NOME2 ...` (além dos já existentes
-`--test-add-contact`, `--test-reply`, `--echo-last`).
+`--test-start-group NOME1 NOME2 ...`, `--test-send-file NOME CAMINHO`,
+`--watch-reply [texto]`, `--test-download-last-file NOME PASTA` (além
+dos já existentes `--test-add-contact`, `--test-reply`, `--echo-last`).
 
-## Em andamento: enviar e baixar documento
+## Próximos passos concretos
 
-**Enviar documento (`send_file`, ainda não implementada)**: o botão
-existe e foi confirmado — `text='Send File'`, na barra ao lado de
-`chat_input_field`. Falta descobrir o que abre ao clicar (diálogo nativo
-de arquivo? aceita paste de `CF_HDROP`?) — ninguém clicou nele ainda
-pra ver.
-
-**Baixar documento (`download_last_document`, ainda não implementada)**
-— bastante descoberto hoje, quase pronto:
-- Bolha de mensagem tipo arquivo: `class='mmui::ChatBubbleItemView'`,
-  texto no formato `"File\n<nome_do_arquivo>\n<tamanho>\n微信电脑版"` —
-  dá pra extrair o nome do arquivo direto do texto (linha 2), sem
-  precisar abrir nada.
-- **Clique simples na bolha já baixa E abre no app padrão do sistema**
-  (ex. Notepad) — comportamento real, mas ruim pra automação (não
-  queremos abrir apps aleatórios). Evitar clique simples.
-- Clique direito abre menu de contexto que **muda conforme o estado**:
-  - Arquivo **já baixado**: `Copy`, `Edit`, `Forward...`,
-    `Add to Favorites`, `Select...`, `Reminder`, `Quote`, `Summary`,
-    **`Show in folder`**, **`Save as...`**, `Open With...`, `Recall`.
-  - Arquivo **ainda não baixado**: `Download`, `Forward...`,
-    `Add to Favorites`, `Select...`, `Reminder`, `Quote`,
-    **`Download to...`**, `Delete`.
-  - Imagem ainda não baixada (menu ainda mais reduzido):
-    `Forward...`, `Add to Favorites`, `Select...`, `Reminder`, `Quote`,
-    `Open in new window`, `Delete` — **sem opção de download visível**
-    (precisa investigar melhor esse caso separadamente).
-- **Decisão**: preferir `"Download to..."`/`"Save as..."` (deixam a
-  gente escolher o destino explicitamente) em vez de `"Show in folder"`
-  (que exigiria ler o caminho de volta da barra de endereço do
-  Explorer — mais frágil).
-- **Não confirmado ainda**: ao clicar `"Download to..."`, abre um
-  diálogo de verdade pra escolher pasta, ou vai direto pro Documents
-  padrão sem perguntar nada? Última mensagem do usuário («está baixando
-  em documents padrão do user») sugere que pode ir direto, mas não
-  ficou claro se apareceu diálogo no meio. Precisa confirmar isso (e o
-  padrão exato de pasta/nome dentro de Documents) antes de escrever
-  `download_last_document`.
-
-## Ainda não iniciado
-
-- **Responder mensagem nova em qualquer conversa** (`list_unread_sessions`
-  + flag `--watch-reply`) — precisa mapear o indicador de "não lida" num
-  `session_item_<Nome>` da sidebar. Só vimos `mmui::XBadge` nos botões da
-  barra de navegação principal (abas Weixin/Contacts/etc.), ainda não
-  num item de conversa individual — dump ainda pendente (mandar mensagem
-  de teste sem abrir a conversa, depois `inspect_ui.py` padrão).
-
-## Próximos passos concretos (nesta ordem)
-
-1. Confirmar o comportamento de `"Download to..."` (diálogo real ou
-   destino fixo?) e terminar `download_last_document`.
-2. Clicar em `"Send File"` e mapear o que abre, pra implementar
-   `send_file`.
-3. Mapear o indicador de "não lida" na sidebar, pra implementar
-   `list_unread_sessions` + `--watch-reply`.
-4. Rodar os testes ao vivo ainda pendentes: `--test-add-contact`,
-   `--test-start-chat`, `--test-start-group` (com 2+ nomes).
+Só falta testar ao vivo, não tem mais nada pra mapear/implementar por
+enquanto:
+1. `--test-add-contact <telefone>`
+2. `--test-start-chat <nome>`
+3. `--test-start-group <nome1> <nome2>` (2+ nomes — só testado com 1)
+4. `--test-send-file <nome> <caminho>`
+5. `--watch-reply`
+6. `--test-download-last-file <nome> <pasta>` — testar especificamente
+   com um arquivo **ainda não baixado** (o caminho "Download to…" nunca
+   foi exercitado; se falhar, o diálogo resultante pode ter
+   título/seletor diferente do assumido — ver README).
 
 ## Onde mais olhar
 

@@ -110,8 +110,9 @@ abandonado, com textos de menu em chinês tipo `'粘贴'`, nunca funcionava):
 | Lista de mensagens | `auto_id='chat_message_list'`; itens de texto são `class='mmui::ChatTextItemView'` (outros tipos, ex. `ChatItemView`, são só separador de horário) |
 
 Implementado em `wechat.py`: `find_wechat_window()`, `list_sessions()`,
-`open_chat()`, `send_message()`, `read_messages()`, `add_contact_by_phone()`,
-`find_or_start_chat()`, `start_group_chat()`.
+`list_unread_sessions()`, `open_chat()`, `send_message()`, `read_messages()`,
+`add_contact_by_phone()`, `find_or_start_chat()`, `start_group_chat()`,
+`send_file()`, `download_last_document()`.
 `explore.py` e `main.py` foram reescritos em cima disso (a versão antiga,
 baseada no `wxauto4` abandonado, saiu — não tinha por que manter código
 morto).
@@ -199,6 +200,74 @@ reseta a busca mantendo a primeira seleção marcada, ou se precisa de
 outro passo entre cada seleção — só testado com 1 nome até agora. Testar
 com 2+ antes de confiar nisso pra grupos maiores.
 
+## Fluxo de enviar documento (`send_file`)
+
+O botão "Send File" (barra de ferramentas ao lado de `chat_input_field`,
+junto com Sticker/Favorites/Screenshot/Voice) abre um diálogo **nativo
+do Windows**, não uma janela do WeChat:
+
+| Elemento | Seletor real |
+|---|---|
+| Botão "Send File" | `text='Send File'` (classe `mmui::XButton`), na toolbar `auto_id='tool_bar_accessible'` |
+| Diálogo | `class='#32770'`, título `"Select File"` — diálogo padrão do Windows (Explorer embutido) |
+| Campo de nome de arquivo | `Edit`, `title='File name:'` — aceita colar o caminho completo direto, sem precisar navegar visualmente |
+| Botão de confirmar | `auto_id='1'`, `text='Open'` |
+| Botão de cancelar | `auto_id='2'`, `text='Cancel'` |
+
+`send_file()` cola o caminho completo (clipboard, mesmo padrão de
+sempre) no campo de nome de arquivo e clica "Open" — não navega pela
+árvore de pastas do diálogo. `auto_id='1'`/`title='File name:'` foram
+escolhidos por serem estáveis entre esse diálogo e o de salvar (ver
+seção seguinte) — o `auto_id` do campo de nome muda entre os dois
+(`1148` no de abrir, `1001` no de salvar), mas o rótulo não.
+
+## Fluxo de mensagem não lida em qualquer conversa (`list_unread_sessions`)
+
+O WeChat embute a contagem de não lidas como uma **linha própria no
+texto** do item da sidebar (`session_item_<Nome>`), logo após o nome —
+não é um badge/elemento visual separado. Confirmado no dump real:
+
+| Estado do item | `window_text()` |
+|---|---|
+| Sem pendência | `'Felipe\n\n\n'` |
+| Com 1 mensagem não lida | `'Felipe\n[1]\nAoba\n13:48\n'` (linha 2 = `[N]`, linha 3 = preview, linha 4 = horário) |
+| Mensagem tipo arquivo (preview) | `'Felipe\n[File] arquivo.txt\n15:56\n'` |
+
+`list_unread_sessions()` casa a 2ª linha contra `UNREAD_MARKER_RE`
+(`^\[(\d+)\]$`) — mesmo princípio já usado pro prefixo `[File]`, só que
+aqui é um número entre colchetes. `main.py --watch-reply` usa isso pra
+vigiar a sidebar inteira em loop (em vez de um chat fixo), lê mensagem
+nova por conversa (comparando com a contagem já vista, em memória — sem
+persistir em arquivo ainda) e responde.
+
+## Fluxo de baixar documento recebido (`download_last_document`)
+
+Clicar direto na bolha de arquivo já baixa **e** abre no app padrão do
+sistema (ex. Notepad) — ruim pra automação (não queremos abrir apps
+aleatórios). Em vez disso, clique com o botão direito abre um menu de
+contexto que muda conforme o estado do arquivo, confirmado ao vivo:
+
+| Elemento | Seletor real |
+|---|---|
+| Bolha de mensagem tipo arquivo | `ListItem` classe `mmui::ChatBubbleItemView`, dentro de `chat_message_list` |
+| Texto da bolha, arquivo **não baixado** | `"File\n<nome>\n<tamanho>\nNot Downloaded\n微信电脑版"` |
+| Texto da bolha, **já baixado** | `"File\n<nome>\n<tamanho>"` (sem a linha `Not Downloaded`) |
+| Menu de contexto (não baixado) | item `"Download to…"` |
+| Menu de contexto (já baixado) | item `"Save as…"` |
+| Diálogo resultante | mesmo tipo nativo `#32770` do `send_file`, título contendo `"Save as"` ou `"Download to"` — campo `title='File name:'`, botão `auto_id='1'` (texto pode ser "Save" em vez de "Open", por isso o `auto_id` é o seletor usado, não o texto) |
+
+`download_last_document()` lê o estado (`Not Downloaded` presente ou
+não) direto do texto da bolha — não precisa adivinhar qual opção vai
+aparecer no menu antes de clicar. O nome do arquivo também vem do texto
+da bolha (2ª linha), usado pra montar o caminho final dentro de
+`save_dir`.
+
+**Não confirmado ao vivo ainda**: o diálogo específico aberto por
+"Download to…" (só testamos com "Save as…", arquivo já baixado) — o
+código assume que segue o mesmo padrão (`title='File name:'`,
+`auto_id='1'`), mas se `--test-download-last-file` falhar
+especificamente num arquivo NÃO baixado, é o primeiro lugar a conferir.
+
 ## Histórico: integração com o server Django (Busca de Suppliers)
 
 Chegamos a implementar uma integração completa com o server Django do
@@ -238,6 +307,10 @@ python main.py --test-add-contact <telefone>          # testa add_contact_by_pho
 python main.py --test-add-contact <telefone> "texto"  # idem, com mensagem específica
 python main.py --test-start-chat <nome>                # testa find_or_start_chat com um contato já existente
 python main.py --test-start-group <nome1> <nome2> ...   # testa start_group_chat com 2+ contatos já existentes
+python main.py --test-send-file <nome> <caminho>        # testa send_file com um arquivo local
+python main.py --watch-reply                            # vigia todas as conversas, responde mensagem nova com TEST_MESSAGE
+python main.py --watch-reply "texto"                    # idem, com texto específico
+python main.py --test-download-last-file <nome> <pasta>  # testa download_last_document
 ```
 
 ## Pendências
@@ -248,18 +321,11 @@ confirmados via dump, mas sem execução completa confirmada ainda):
 - [ ] `main.py --test-start-chat` (`find_or_start_chat`).
 - [ ] `main.py --test-start-group` com 2+ nomes (`start_group_chat` —
       só testado até agora com 1 nome, que confirmou não formar grupo).
-
-Funções ainda não implementadas (próximos passos do roteiro atual):
-- [ ] Responder mensagem nova **em qualquer conversa** (não só uma fixa)
-      — precisa mapear o indicador de "não lida" por `session_item_` na
-      sidebar antes de escrever `list_unread_sessions`.
-- [ ] Enviar documento — botão já confirmado (`text='Send File'`, na
-      barra ao lado de `chat_input_field`), falta mapear o que abre ao
-      clicar (diálogo nativo de arquivo, ou aceita paste de
-      `CF_HDROP`?) antes de escrever `send_file`.
-- [ ] Baixar documento recebido e devolver o caminho no disco (sem
-      extrair conteúdo) — precisa mapear a bolha de mensagem tipo
-      arquivo e seu menu de contexto.
+- [ ] `main.py --test-send-file` (`send_file`).
+- [ ] `main.py --watch-reply` (`list_unread_sessions`).
+- [ ] `main.py --test-download-last-file` (`download_last_document` —
+      testado até agora só o caminho "Save as..."/já baixado; o caminho
+      "Download to.../não baixado" ainda não foi exercitado ao vivo).
 
 Outros itens, sem prazo definido:
 - [ ] Confirmar se a automação também cobre WeCom (cliente corporativo)
