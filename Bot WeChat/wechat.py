@@ -86,10 +86,7 @@ def find_window_by_title(
     filter_false_positives: bool = False,
     timeout: float = FIND_TIMEOUT_SECONDS,
 ):
-    """Acha uma janela de nível superior pelo título, com retry até `timeout`
-    — útil tanto pra janela principal (já aberta) quanto pra diálogos que só
-    aparecem depois de um clique (ex.: "Add Contacts", "Send Friend Request").
-    """
+    """Função para achar janela de nível superior pelo título."""
     deadline = time.monotonic() + timeout
     while True:
         desktop = Desktop(backend="uia")
@@ -119,6 +116,7 @@ def find_window_by_title(
 
 
 def find_wechat_window():
+    """Função para achar a janela principal do WeChat."""
     return find_window_by_title(TITLE_NEEDLES, filter_false_positives=True)
 
 
@@ -129,6 +127,7 @@ def _find_one(
     timeout: float = FIND_TIMEOUT_SECONDS,
     **kwargs,
 ):
+    """Função para achar um elemento específico dentro da janela."""
     # pywinauto 0.6.9 não aceita auto_id= como filtro direto em
     # descendants()/children() (só class_name/title/control_type são
     # repassados pra build_condition) — filtra auto_id na mão em Python.
@@ -151,6 +150,7 @@ def _find_one(
 
 
 def _set_clipboard_text(text: str) -> None:
+    """Função para colocar um texto na área de transferência."""
     win32clipboard.OpenClipboard()
     try:
         win32clipboard.EmptyClipboard()
@@ -160,6 +160,7 @@ def _set_clipboard_text(text: str) -> None:
 
 
 def list_sessions(window) -> list[str]:
+    """Função para listar os nomes das conversas na sidebar."""
     session_list = _find_one(window, "Lista de conversas", auto_id="session_list")
     names = []
     for item in session_list.children(control_type="ListItem"):
@@ -170,8 +171,7 @@ def list_sessions(window) -> list[str]:
 
 
 def list_unread_sessions(window) -> list[str]:
-    """Retorna os nomes dos itens da sidebar com mensagem não lida (ver
-    `UNREAD_MARKER_RE`)."""
+    """Função para listar conversas com mensagem não lida."""
     session_list = _find_one(window, "Lista de conversas", auto_id="session_list")
     names = []
     for item in session_list.children(control_type="ListItem"):
@@ -185,6 +185,7 @@ def list_unread_sessions(window) -> list[str]:
 
 
 def get_current_chat_name(window) -> str | None:
+    """Função para pegar o nome da conversa aberta."""
     for item in window.descendants(control_type="Text"):
         if item.element_info.automation_id.endswith(CURRENT_CHAT_LABEL_SUFFIX):
             return item.window_text()
@@ -192,13 +193,12 @@ def get_current_chat_name(window) -> str | None:
 
 
 def _random_delay(low: float = 0.3, high: float = 1.0) -> None:
-    """Pausa um tempo aleatório entre `low` e `high` segundos — em vez de um
-    sleep fixo (cadência sempre igual entre ações, mais fácil de bater como
-    padrão de bot), varia a cada chamada."""
+    """Função para pausar um tempo aleatório entre ações."""
     time.sleep(random.uniform(low, high))
 
 
 def _focus_window(window) -> None:
+    """Função para focar a janela antes de clicar."""
     # click_input() faz um clique de mouse de verdade nas coordenadas de
     # tela — sem trazer a janela pra frente antes (só faz isso sozinho se
     # for um diálogo). Se o WeChat não estiver em primeiro plano (ex.: o
@@ -209,12 +209,7 @@ def _focus_window(window) -> None:
 
 
 def _click_by_text(text: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
-    """Clica no primeiro elemento com esse texto em QUALQUER janela de nível
-    superior — usado pra item de menu/popup transitório (ex.: o menu de
-    atalhos), cuja janela não tem título/classe estável pra buscar direto
-    (o próprio dump confirma que popups do WeChat são janelas de nível
-    superior de verdade, não filhas da janela principal).
-    """
+    """Função para clicar em elemento por texto, em qualquer janela."""
     deadline = time.monotonic() + timeout
     while True:
         for window in Desktop(backend="uia").windows():
@@ -231,12 +226,7 @@ def _click_by_text(text: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
 
 
 def _click_menu_item_by_prefix(text_prefix: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
-    """Como `_click_by_text`, mas casa por prefixo em vez de texto exato —
-    usado pros itens "Download to…"/"Save as…" do menu de contexto de
-    arquivo, cujo caractere de reticências real (confirmado só no título
-    do diálogo resultante, '…', não '...') não é garantido bater exato
-    no texto do item de menu em si.
-    """
+    """Função para clicar em item de menu por prefixo."""
     deadline = time.monotonic() + timeout
     while True:
         for window in Desktop(backend="uia").windows():
@@ -253,7 +243,7 @@ def _click_menu_item_by_prefix(text_prefix: str, timeout: float = FIND_TIMEOUT_S
 
 
 def open_add_contact_dialog(main_window):
-    """Abre o diálogo "Add Contacts" a partir da janela principal do WeChat."""
+    """Função para abrir o diálogo de adicionar contato."""
     shortcuts_button = _find_one(
         main_window, "Botão 'Shortcuts'", title="Shortcuts", control_type="Button"
     )
@@ -264,19 +254,7 @@ def open_add_contact_dialog(main_window):
 
 
 def add_contact_by_phone(main_window, phone: str, message: str | None = None) -> str | None:
-    """Busca `phone` no diálogo "Add Contacts" e manda pedido de amizade,
-    opcionalmente customizando a mensagem de verificação.
-
-    Retorna o APELIDO (nickname) real do WeChat da pessoa em caso de
-    sucesso, ou `None` se o número não corresponder a nenhum contato —
-    o nome do fornecedor no Django (ou o telefone) quase nunca bate com
-    esse apelido, então é ele (não `phone`/`supplier.name`) que precisa
-    ser usado depois em `send_message`/`open_chat` pra achar a conversa
-    na sidebar (auto_id='session_item_<apelido>').
-
-    Precisa da outra pessoa ACEITAR o pedido antes de existir conversa
-    pra `send_message` funcionar (ver README).
-    """
+    """Função para adicionar contato pelo telefone e mandar pedido."""
     dialog = open_add_contact_dialog(main_window)
 
     search_field = _find_one(dialog, "Campo de busca", control_type="Edit")
@@ -354,14 +332,7 @@ def add_contact_by_phone(main_window, phone: str, message: str | None = None) ->
 
 
 def find_or_start_chat(main_window, contact_name: str) -> str | None:
-    """Abre uma conversa com `contact_name`: tenta a sidebar primeiro (já
-    tem sessão — caminho rápido via `open_chat`); se não achar, busca na
-    aba "Contacts" e usa o botão "Messages" do perfil pra abrir conversa
-    nova com um contato que já existe mas ainda não tem sessão.
-
-    Retorna o nome da conversa aberta, ou `None` se `contact_name` não
-    corresponder a nenhum contato.
-    """
+    """Função para procurar e abrir conversa."""
     if contact_name in list_sessions(main_window):
         open_chat(main_window, contact_name)
         return contact_name
@@ -402,7 +373,7 @@ def find_or_start_chat(main_window, contact_name: str) -> str | None:
 
 
 def open_start_group_chat_dialog(main_window):
-    """Abre o diálogo "Start Group Chat" a partir da janela principal."""
+    """Função para abrir o diálogo de criar grupo."""
     shortcuts_button = _find_one(
         main_window, "Botão 'Shortcuts'", title="Shortcuts", control_type="Button"
     )
@@ -413,16 +384,7 @@ def open_start_group_chat_dialog(main_window):
 
 
 def start_group_chat(main_window, contact_names: list[str]) -> str | None:
-    """Cria um grupo com os `contact_names` (nomes exatos, já contatos do
-    WeChat) e confirma. Retorna o nome/label da conversa aberta depois, ou
-    `None` se algum nome não for encontrado na lista de seleção (cancela o
-    diálogo nesse caso, nenhum grupo é criado).
-
-    Confirmado ao vivo: selecionar só 1 nome não cria grupo de verdade —
-    o WeChat só abre a conversa individual com essa pessoa (precisa de
-    2+ nomes pra virar grupo). Não validamos isso aqui, deixamos o
-    próprio WeChat decidir — não é erro da automação.
-    """
+    """Função para criar um grupo com os contatos informados."""
     dialog = open_start_group_chat_dialog(main_window)
 
     search_field = _find_one(dialog, "Campo de busca de contatos", control_type="Edit")
@@ -457,6 +419,7 @@ def start_group_chat(main_window, contact_names: list[str]) -> str | None:
 
 
 def open_chat(window, chat_name: str) -> None:
+    """Função para abrir uma conversa já existente na sidebar."""
     # Clicar numa conversa que já está aberta a FECHA (é toggle, não "abrir
     # garantido") — sempre confirma o estado atual antes de agir.
     if get_current_chat_name(window) == chat_name:
@@ -471,6 +434,7 @@ def open_chat(window, chat_name: str) -> None:
 
 
 def send_message(window, chat_name: str, text: str) -> None:
+    """Função para enviar mensagens para novas conversas."""
     open_chat(window, chat_name)
     input_field = _find_one(window, "Campo de mensagem", auto_id="chat_input_field")
     _focus_window(window)
@@ -484,12 +448,7 @@ def send_message(window, chat_name: str, text: str) -> None:
 
 
 def send_file(window, chat_name: str, filepath: str) -> None:
-    """Manda `filepath` (caminho completo no disco) como arquivo pra
-    `chat_name`. O botão "Send File" abre um diálogo nativo do Windows
-    ("Select File", classe #32770, não é uma janela mmui do WeChat) —
-    cola o caminho completo no campo de nome de arquivo em vez de
-    navegar visualmente até lá.
-    """
+    """Função para enviar um arquivo dentro de uma conversa."""
     open_chat(window, chat_name)
     send_file_button = _find_one(
         window, "Botão 'Send File'", title=SEND_FILE_BUTTON_TEXT, control_type="Button"
@@ -517,18 +476,7 @@ def send_file(window, chat_name: str, filepath: str) -> None:
 
 
 def download_last_document(window, chat_name: str, save_dir: str) -> str:
-    """Baixa o arquivo mais recente em `chat_name` pra dentro de `save_dir`
-    e devolve o caminho completo salvo. Não extrai conteúdo do arquivo —
-    só garante o download (ver README).
-
-    Clicar direto na bolha já baixa E abre no app padrão do sistema (ruim
-    pra automação) — em vez disso, clica com o botão direito e usa
-    "Download to…" (arquivo ainda não baixado) ou "Save as…" (já
-    baixado/cache), que abrem o mesmo tipo de diálogo nativo do Windows
-    usado em `send_file`, só em modo salvar. O estado (baixado ou não) já
-    vem no próprio texto da bolha (`NOT_DOWNLOADED_MARKER`), não precisa
-    adivinhar qual opção vai aparecer no menu.
-    """
+    """Função para baixar o último arquivo de uma conversa."""
     open_chat(window, chat_name)
     message_list = _find_one(window, "Lista de mensagens", auto_id="chat_message_list")
 
@@ -574,6 +522,7 @@ def download_last_document(window, chat_name: str, save_dir: str) -> str:
 
 
 def read_messages(window, chat_name: str | None = None) -> list[str]:
+    """Função para ler as mensagens de uma conversa."""
     if chat_name:
         open_chat(window, chat_name)
     message_list = _find_one(window, "Lista de mensagens", auto_id="chat_message_list")
