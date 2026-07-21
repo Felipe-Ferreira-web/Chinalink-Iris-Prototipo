@@ -543,7 +543,10 @@ def download_last_document(window, chat_name: str, save_dir: str) -> str:
     not_downloaded = NOT_DOWNLOADED_MARKER in bubble_text
 
     _focus_window(window)
-    bubble.right_click_input()
+    # Retângulo da bolha é a linha inteira (bem mais larga que o balão
+    # visível, alinhado à esquerda) — clique no centro cai em espaço vazio.
+    # Mira um ponto dentro da área visível de verdade, perto do texto.
+    bubble.right_click_input(coords=(180, 40))
     time.sleep(5)  # diagnóstico temporário: dá tempo de ver se o menu abre
     _click_menu_item_by_prefix(DOWNLOAD_TO_MENU_PREFIX if not_downloaded else SAVE_AS_MENU_PREFIX)
 
