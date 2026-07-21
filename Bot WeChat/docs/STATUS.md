@@ -42,9 +42,9 @@ não importa de onde for chamado.
 | `find_or_start_chat` | Testado ao vivo: **funcionou na 2ª tentativa, falhou na 1ª** (achava que tinha travado no botão "Messages"). Teste pytest escrito: `tests/pytests/test_find_or_start_chat.py` (3 casos, passando) — mas caracteriza o código ATUAL, que ainda tem o bug de tab abaixo. |
 | `send_message`/`read_messages`/`open_chat`/`list_sessions` | Confirmadas funcionando ao vivo em sessão anterior. Sem teste pytest ainda. |
 | `start_group_chat` | Implementada, testada só com 1 nome (WeChat abre conversa individual, não forma grupo — esperado). **Não testada com 2+ nomes** — bug de parâmetro com espaço em investigação (ver abaixo). |
-| `send_file` | Implementada. **Não testada ao vivo.** |
+| `send_file` | Bug corrigido (ver abaixo), **ainda não re-testada ao vivo** depois do fix. |
 | `list_unread_sessions` / `--watch-reply` | Implementada. **Não testada ao vivo.** |
-| `download_last_document` | Implementada. Só testado o caminho "já baixado" (Save as…); **"Download to…" nunca testado.** |
+| `download_last_document` | Mesmo bug do `send_file` provavelmente também afeta este (usa o mesmo `find_window_by_title` pro diálogo "Save as…"/"Download to…") — **precisa re-testar os dois caminhos.** |
 | `set_contact_remark` | **Confirmado funcionando ao vivo (2026-07-21)** — Enter realmente confirma a edição do remark. Teste pytest: `tests/pytests/test_set_contact_remark.py` (2 casos, passando). |
 
 ## Bug corrigido: assumir a aba ativa
@@ -179,6 +179,31 @@ não resolvido**: essa frase é mensagem de sistema, não sabemos ainda se
 (faltaria dump do `chat_message_list` dessa conversa) — se capturar,
 `watch_reply.py` responderia a ela sem perceber que não é uma mensagem
 real da pessoa.
+
+## Bug corrigido: diálogo nativo não encontrado (send_file / download_last_document)
+
+**Sintoma** (`send_file.py` ao vivo, 2026-07-21): diálogo "Select File"
+abria e respondia normal a clique manual, mas o script nunca avançava —
+`find_window_by_title` estourava os 15s e lançava `RuntimeError`
+("Nenhuma janela... encontrada"), sem travar de fato (só parecia, pelo
+tempo de espera).
+
+**Causa confirmada por dump real**: `find_window_by_title` só enumera
+`Desktop(backend="uia").windows()` (janelas de nível superior). Os
+dumps `ui_dump_select_file.txt` e `ui_dump_save.txt` mostram que os
+diálogos nativos do Windows (`#32770`, "Select File" e "Save as…")
+aparecem só como **descendentes da janela principal** na árvore UIA,
+não como janela irmã dela no desktop — `Desktop().windows()` nunca os
+enxerga. Diferente dos diálogos Qt próprios do WeChat (Add Contacts,
+Send Friend Request, Start Group Chat), que são janelas de topo de
+verdade e continuam achados normalmente por `find_window_by_title`.
+
+**Fix**: novo helper `_find_nested_window_by_title(parent_window,
+title_needles)` — busca em `parent_window.descendants(control_type=
+"Window")` em vez do desktop inteiro. Usado em `send_file` e
+`download_last_document` no lugar de `find_window_by_title` pros
+diálogos "Select File"/"Save as…"/"Download to…". **Não re-testado ao
+vivo ainda** — próximo passo.
 
 ## Próximos passos concretos
 

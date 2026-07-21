@@ -84,6 +84,30 @@ def find_wechat_window():
     return find_window_by_title(TITLE_NEEDLES, filter_false_positives=True)
 
 
+def _find_nested_window_by_title(
+    parent_window, title_needles: tuple[str, ...], timeout: float = FIND_TIMEOUT_SECONDS
+):
+    """Função para achar diálogo nativo aninhado na janela principal."""
+    # Diálogos nativos (Select File, Save as…) aparecem só como descendentes
+    # da janela principal na árvore UIA, não em Desktop().windows() — não dá
+    # pra usar find_window_by_title pra esses (confirmado via dump real).
+    deadline = time.monotonic() + timeout
+    while True:
+        for candidate in parent_window.descendants(control_type="Window"):
+            try:
+                title = candidate.window_text()
+            except Exception:
+                continue
+            if any(needle in title for needle in title_needles):
+                return candidate
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"Nenhum diálogo com título contendo {title_needles!r} encontrado "
+                f"na janela principal após {timeout}s."
+            )
+        time.sleep(FIND_POLL_INTERVAL_SECONDS)
+
+
 def _find_one(
     window,
     error_label: str,
@@ -471,7 +495,7 @@ def send_file(window, chat_name: str, filepath: str) -> None:
     _focus_window(window)
     send_file_button.click_input()
 
-    dialog = find_window_by_title(SELECT_FILE_WINDOW_TITLE)
+    dialog = _find_nested_window_by_title(window, SELECT_FILE_WINDOW_TITLE)
 
     filename_field = _find_one(
         dialog, "Campo de nome de arquivo", title=FILE_NAME_FIELD_LABEL, control_type="Edit"
@@ -514,7 +538,7 @@ def download_last_document(window, chat_name: str, save_dir: str) -> str:
     bubble.right_click_input()
     _click_menu_item_by_prefix(DOWNLOAD_TO_MENU_PREFIX if not_downloaded else SAVE_AS_MENU_PREFIX)
 
-    dialog = find_window_by_title(SAVE_DIALOG_WINDOW_TITLE)
+    dialog = _find_nested_window_by_title(window, SAVE_DIALOG_WINDOW_TITLE)
 
     save_path = str(Path(save_dir) / filename)
     filename_field = _find_one(
