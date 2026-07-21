@@ -42,7 +42,7 @@ não importa de onde for chamado.
 | `find_or_start_chat` | Testado ao vivo: **funcionou na 2ª tentativa, falhou na 1ª** (achava que tinha travado no botão "Messages"). Teste pytest escrito: `tests/pytests/test_find_or_start_chat.py` (3 casos, passando) — mas caracteriza o código ATUAL, que ainda tem o bug de tab abaixo. |
 | `send_message`/`read_messages`/`open_chat`/`list_sessions` | Confirmadas funcionando ao vivo em sessão anterior. Sem teste pytest ainda. |
 | `start_group_chat` | Implementada, testada só com 1 nome (WeChat abre conversa individual, não forma grupo — esperado). **Não testada com 2+ nomes** — bug de parâmetro com espaço em investigação (ver abaixo). |
-| `send_file` | Bug corrigido (ver abaixo), **ainda não re-testada ao vivo** depois do fix. |
+| `send_file` | **Confirmado funcionando ao vivo (2026-07-21)**, depois de 2 fixes: diálogo nativo aninhado + clique em Send faltando (ver abaixo). Teste pytest: `tests/pytests/test_send_file.py`. |
 | `list_unread_sessions` / `--watch-reply` | Implementada. **Não testada ao vivo.** |
 | `download_last_document` | Mesmo bug do `send_file` provavelmente também afeta este (usa o mesmo `find_window_by_title` pro diálogo "Save as…"/"Download to…") — **precisa re-testar os dois caminhos.** |
 | `set_contact_remark` | **Confirmado funcionando ao vivo (2026-07-21)** — Enter realmente confirma a edição do remark. Teste pytest: `tests/pytests/test_set_contact_remark.py` (2 casos, passando). |
@@ -207,10 +207,11 @@ vivo ainda** — próximo passo.
 
 ## Próximos passos concretos
 
-1. Continuar o ciclo teste-ao-vivo → pytest pras funções que faltam:
-   `start_group.py` (2+ nomes, aspas em cada nome), `send_file.py`,
-   `watch_reply.py`, `download_last_file.py` (testar especificamente um
-   arquivo AINDA NÃO baixado).
+1. `download_last_file.py` — testar os dois caminhos ("Save as…" e
+   "Download to…"), já com o fix do diálogo nativo aninhado aplicado.
+2. `watch_reply.py`.
+3. `start_group.py` com 2+ nomes — bloqueado por enquanto, falta um
+   segundo celular pra testar.
 
 ## Performance — não urgente, olhar no futuro
 

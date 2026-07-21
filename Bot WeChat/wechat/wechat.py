@@ -224,18 +224,21 @@ def _click_by_text(text: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
         time.sleep(FIND_POLL_INTERVAL_SECONDS)
 
 
-def _click_menu_item_by_prefix(text_prefix: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
+def _click_menu_item_by_prefix(
+    parent_window, text_prefix: str, timeout: float = FIND_TIMEOUT_SECONDS
+) -> None:
     """Função para clicar em item de menu por prefixo."""
+    # Busca só na janela principal, não no desktop inteiro: menu de
+    # contexto é transitório, e enumerar todas as janelas é lento demais
+    # no servidor real — o menu fecha antes da busca terminar.
     deadline = time.monotonic() + timeout
     while True:
-        for window in Desktop(backend="uia").windows():
-            try:
-                matches = [d for d in window.descendants() if d.window_text().startswith(text_prefix)]
-            except Exception:
-                continue
-            if matches:
-                matches[0].click_input()
-                return
+        matches = [
+            d for d in parent_window.descendants() if d.window_text().startswith(text_prefix)
+        ]
+        if matches:
+            matches[0].click_input()
+            return
         if time.monotonic() >= deadline:
             raise RuntimeError(f"Item de menu começando com {text_prefix!r} não encontrado.")
         time.sleep(FIND_POLL_INTERVAL_SECONDS)
@@ -541,7 +544,9 @@ def download_last_document(window, chat_name: str, save_dir: str) -> str:
 
     _focus_window(window)
     bubble.right_click_input()
-    _click_menu_item_by_prefix(DOWNLOAD_TO_MENU_PREFIX if not_downloaded else SAVE_AS_MENU_PREFIX)
+    _click_menu_item_by_prefix(
+        window, DOWNLOAD_TO_MENU_PREFIX if not_downloaded else SAVE_AS_MENU_PREFIX
+    )
 
     dialog = _find_nested_window_by_title(window, SAVE_DIALOG_WINDOW_TITLE)
 
