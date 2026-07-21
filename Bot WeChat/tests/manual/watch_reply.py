@@ -1,18 +1,32 @@
-"""Rotina manual: vigia conversas e responde mensagem nova, em loop."""
+"""Rotina manual: vigia conversas e responde mensagem nova, em loop.
+
+Uso:
+    python watch_reply.py
+    python watch_reply.py "texto"
+"""
 
 from __future__ import annotations
 
+import argparse
 import logging
 import time
 
-import wechat
+from _tests_setup import connect
+from wechat import wechat
 
 WATCH_POLL_INTERVAL_SECONDS = 5
 
 log = logging.getLogger("main")
 
 
-def run(window, text: str) -> None:
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("texto", nargs="?", default=None)
+    args = parser.parse_args()
+
+    window, config = connect()
+    text = args.texto if args.texto is not None else config.test_message
+
     log.info(
         "Vigiando todas as conversas (a cada %ds). Ctrl+C pra sair.",
         WATCH_POLL_INTERVAL_SECONDS,
@@ -32,3 +46,7 @@ def run(window, text: str) -> None:
             time.sleep(WATCH_POLL_INTERVAL_SECONDS)
     except KeyboardInterrupt:
         log.info("Encerrando.")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,37 +1,9 @@
-"""Automação mínima do WeChat via pywinauto, em cima de seletores REAIS
-inspecionados com ui_mapping/inspect_ui.py (ver ui_mapping/dumps/) — não
-adivinhados.
-
-Cobre só o que o Iris precisa: abrir uma conversa, enviar mensagem, ler
-mensagens. Não tenta replicar a API inteira de um "wxauto" (ver README,
-seção "Tentativa abandonada").
-
-Seletores confirmados no dump real:
-- Item de conversa na sidebar: auto_id='session_item_<Nome>', dentro da
-  lista auto_id='session_list'.
-- Campo de digitar mensagem: auto_id='chat_input_field' (Edit).
-- Botão de enviar: text='Send' (classe mmui::XOutlineButton).
-- Lista de mensagens: auto_id='chat_message_list'; itens de texto são
-  class='mmui::ChatTextItemView' (outros tipos, ex. ChatItemView, são só
-  separador de horário, sem conteúdo de mensagem).
-
-Fluxo de adicionar contato (janelas separadas de verdade, confirmado nos
-dumps `ui_dump_add_contact.txt`/`ui_dump_send_friend_request.txt`):
-- Diálogo "Add Contacts" (class mmui::AddFriendWindow): campo de busca é
-  o único Edit da janela; botão "Search" de verdade (title='Search',
-  diferente da busca da sidebar, que usa Enter); resultado "não
-  encontrado" é um Text contendo "User not found"; resultado encontrado
-  mostra um botão title='Add to Contacts'.
-- Diálogo "Send Friend Request" (class mmui::VerifyFriendWindow): campo
-  de mensagem de verificação é um Edit (pré-preenchido, editável); botão
-  de confirmar é title='OK' (existe também title='Cancel' — desambiguar
-  sempre pelo texto).
-"""
+"""Automação do WeChat via pywinauto, sobre seletores reais confirmados
+(ver docs/README.md) — conversas, mensagens, contatos, grupos, arquivos."""
 
 from __future__ import annotations
 
 import random
-import re
 import time
 from pathlib import Path
 
@@ -39,48 +11,37 @@ import win32clipboard
 import win32con
 from pywinauto import Desktop
 
-TITLE_NEEDLES = ("Weixin", "WeChat", "微信")
-# Classes de janela de outros apps que só coincidem no título (ex.: uma aba
-# do navegador com "微信" no texto) — nunca é a janela real do WeChat.
-FALSE_POSITIVE_CLASS_PREFIXES = ("Chrome_WidgetWin",)
-MESSAGE_TEXT_CLASS = "mmui::ChatTextItemView"
-SESSION_ITEM_PREFIX = "session_item_"
-CURRENT_CHAT_LABEL_SUFFIX = "current_chat_name_label"
-ADD_CONTACTS_MENU_TEXT = "Add Contacts"
-ADD_CONTACTS_WINDOW_TITLE = ("Add Contacts",)
-SEND_FRIEND_REQUEST_WINDOW_TITLE = ("Send Friend Request",)
-USER_NOT_FOUND_TEXT = "User not found"
-WEIXIN_TAB_TEXT = "Weixin"
-CONTACTS_TAB_TEXT = "Contacts"
-MESSAGES_BUTTON_TEXT = "Messages"
-CONTACT_ITEM_CLASS = "mmui::ContactsCellItemView"
-REMARK_VALUE_CLASS = "mmui::ProfileDetailValueRemarkView"
-START_GROUP_CHAT_MENU_TEXT = "Start Group Chat"
-START_GROUP_CHAT_WINDOW_TITLE = ("Start Group Chat",)
-GROUP_CONTACT_ROW_CLASS = "mmui::SPSelectionContactRow"
-SEND_FILE_BUTTON_TEXT = "Send File"
-SELECT_FILE_WINDOW_TITLE = ("Select File",)
-# "File name:" é o rótulo do campo de caminho tanto no diálogo de abrir
-# quanto no de salvar — mais estável que auto_id, que muda entre eles
-# (1148 no de abrir, 1001 no de salvar, confirmado nos dumps reais).
-FILE_NAME_FIELD_LABEL = "File name:"
-# auto_id='1' é o botão de ação primária (Open/Save) nos dois diálogos —
-# também confirmado igual nos dois dumps, ao contrário do texto do botão.
-DIALOG_PRIMARY_BUTTON_ID = "1"
-FILE_BUBBLE_CLASS = "mmui::ChatBubbleItemView"
-NOT_DOWNLOADED_MARKER = "Not Downloaded"
-DOWNLOAD_TO_MENU_PREFIX = "Download to"
-SAVE_AS_MENU_PREFIX = "Save as"
-SAVE_DIALOG_WINDOW_TITLE = ("Save as", "Download to")
-# O WeChat embute a contagem de não lidas como uma linha própria "[N]" no
-# texto do item da sidebar, logo após o nome (ex.: 'Felipe\n[1]\nAoba\n13:48\n')
-# — confirmado no dump real, não é um badge/elemento separado.
-UNREAD_MARKER_RE = re.compile(r"^\[(\d+)\]$")
-# Esse servidor é lento pra chamadas UIA (achar a janela chegou a levar 1
-# minuto) — timeout generoso, com retry, em vez de assumir que o elemento
-# já está renderizado logo após uma ação (click, troca de chat etc).
-FIND_TIMEOUT_SECONDS = 15.0
-FIND_POLL_INTERVAL_SECONDS = 0.5
+from .setup_wechat import (
+    ADD_CONTACTS_MENU_TEXT,
+    ADD_CONTACTS_WINDOW_TITLE,
+    CONTACT_ITEM_CLASS,
+    CONTACTS_TAB_TEXT,
+    CURRENT_CHAT_LABEL_SUFFIX,
+    DIALOG_PRIMARY_BUTTON_ID,
+    DOWNLOAD_TO_MENU_PREFIX,
+    FALSE_POSITIVE_CLASS_PREFIXES,
+    FILE_BUBBLE_CLASS,
+    FILE_NAME_FIELD_LABEL,
+    FIND_POLL_INTERVAL_SECONDS,
+    FIND_TIMEOUT_SECONDS,
+    GROUP_CONTACT_ROW_CLASS,
+    MESSAGE_TEXT_CLASS,
+    MESSAGES_BUTTON_TEXT,
+    NOT_DOWNLOADED_MARKER,
+    REMARK_VALUE_CLASS,
+    SAVE_AS_MENU_PREFIX,
+    SAVE_DIALOG_WINDOW_TITLE,
+    SELECT_FILE_WINDOW_TITLE,
+    SEND_FILE_BUTTON_TEXT,
+    SEND_FRIEND_REQUEST_WINDOW_TITLE,
+    SESSION_ITEM_PREFIX,
+    START_GROUP_CHAT_MENU_TEXT,
+    START_GROUP_CHAT_WINDOW_TITLE,
+    TITLE_NEEDLES,
+    UNREAD_MARKER_RE,
+    USER_NOT_FOUND_TEXT,
+    WEIXIN_TAB_TEXT,
+)
 
 
 def find_window_by_title(

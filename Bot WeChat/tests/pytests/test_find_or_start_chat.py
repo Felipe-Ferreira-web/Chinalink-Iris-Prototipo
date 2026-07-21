@@ -9,7 +9,7 @@ no servidor, contra o WeChat de verdade (ver docs/README.md).
 from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
-import wechat
+from wechat import wechat
 
 
 def _find_one_by_label(mapping):
@@ -19,14 +19,16 @@ def _find_one_by_label(mapping):
 
 
 def _patch_wechat_internals(stack):
+    # Patch em wechat.wechat (não wechat.X): é o módulo onde as funções
+    # foram definidas, e é lá que o nome é resolvido em tempo de chamada.
     return {
-        "list_sessions": stack.enter_context(patch("wechat.list_sessions")),
-        "open_chat": stack.enter_context(patch("wechat.open_chat")),
-        "get_current_chat_name": stack.enter_context(patch("wechat.get_current_chat_name")),
-        "set_clipboard_text": stack.enter_context(patch("wechat._set_clipboard_text")),
-        "random_delay": stack.enter_context(patch("wechat._random_delay")),
-        "focus_window": stack.enter_context(patch("wechat._focus_window")),
-        "find_one": stack.enter_context(patch("wechat._find_one")),
+        "list_sessions": stack.enter_context(patch("wechat.wechat.list_sessions")),
+        "open_chat": stack.enter_context(patch("wechat.wechat.open_chat")),
+        "get_current_chat_name": stack.enter_context(patch("wechat.wechat.get_current_chat_name")),
+        "set_clipboard_text": stack.enter_context(patch("wechat.wechat._set_clipboard_text")),
+        "random_delay": stack.enter_context(patch("wechat.wechat._random_delay")),
+        "focus_window": stack.enter_context(patch("wechat.wechat._focus_window")),
+        "find_one": stack.enter_context(patch("wechat.wechat._find_one")),
     }
 
 

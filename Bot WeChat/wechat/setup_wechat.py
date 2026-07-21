@@ -1,0 +1,34 @@
+"""Constantes e seletores confirmados via dump real (ver docs/README.md).
+Usadas por wechat/__init__.py."""
+
+import re
+
+TITLE_NEEDLES = ("Weixin", "WeChat", "微信")
+FALSE_POSITIVE_CLASS_PREFIXES = ("Chrome_WidgetWin",)  # classes de outro app, nunca o WeChat real
+MESSAGE_TEXT_CLASS = "mmui::ChatTextItemView"
+SESSION_ITEM_PREFIX = "session_item_"
+CURRENT_CHAT_LABEL_SUFFIX = "current_chat_name_label"
+ADD_CONTACTS_MENU_TEXT = "Add Contacts"
+ADD_CONTACTS_WINDOW_TITLE = ("Add Contacts",)
+SEND_FRIEND_REQUEST_WINDOW_TITLE = ("Send Friend Request",)
+USER_NOT_FOUND_TEXT = "User not found"
+WEIXIN_TAB_TEXT = "Weixin"
+CONTACTS_TAB_TEXT = "Contacts"
+MESSAGES_BUTTON_TEXT = "Messages"
+CONTACT_ITEM_CLASS = "mmui::ContactsCellItemView"
+REMARK_VALUE_CLASS = "mmui::ProfileDetailValueRemarkView"
+START_GROUP_CHAT_MENU_TEXT = "Start Group Chat"
+START_GROUP_CHAT_WINDOW_TITLE = ("Start Group Chat",)
+GROUP_CONTACT_ROW_CLASS = "mmui::SPSelectionContactRow"
+SEND_FILE_BUTTON_TEXT = "Send File"
+SELECT_FILE_WINDOW_TITLE = ("Select File",)
+FILE_NAME_FIELD_LABEL = "File name:"  # rótulo igual em abrir/salvar, mais estável que auto_id
+DIALOG_PRIMARY_BUTTON_ID = "1"  # botão de ação primária, mesmo id nos dois diálogos
+FILE_BUBBLE_CLASS = "mmui::ChatBubbleItemView"
+NOT_DOWNLOADED_MARKER = "Not Downloaded"
+DOWNLOAD_TO_MENU_PREFIX = "Download to"  # prefixo, não exato — reticências reais incertas
+SAVE_AS_MENU_PREFIX = "Save as"  # prefixo, não exato — reticências reais incertas
+SAVE_DIALOG_WINDOW_TITLE = ("Save as", "Download to")
+UNREAD_MARKER_RE = re.compile(r"^\[(\d+)\]$")  # contagem de não lidas vem como linha de texto
+FIND_TIMEOUT_SECONDS = 15.0  # generoso pq o servidor é lento pra chamadas UIA
+FIND_POLL_INTERVAL_SECONDS = 0.5

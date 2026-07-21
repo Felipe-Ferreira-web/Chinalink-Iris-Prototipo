@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-import wechat
+from wechat import wechat
 from config import load_config, setup_logging
 
 log = logging.getLogger("explore")

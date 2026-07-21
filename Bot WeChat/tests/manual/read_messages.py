@@ -1,18 +1,35 @@
-"""Rotina manual: lê e imprime as mensagens de uma conversa."""
+"""Rotina manual: lê e imprime as mensagens de uma conversa.
+
+Uso:
+    python read_messages.py
+    python read_messages.py <nome>
+"""
 
 from __future__ import annotations
 
+import argparse
 import logging
 
-import wechat
+from _tests_setup import connect
+from wechat import wechat
 
 log = logging.getLogger("main")
 
 
-def run(window, chat_name: str) -> list[str]:
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("nome", nargs="?", default=None)
+    args = parser.parse_args()
+
+    window, config = connect()
+    chat_name = args.nome if args.nome is not None else config.target_chat_name
+
     log.info("Lendo mensagens de '%s'...", chat_name)
     messages = wechat.read_messages(window, chat_name)
     log.info("%d mensagens de texto encontradas:", len(messages))
     for text in messages:
         log.info("  %s", text)
-    return messages
+
+
+if __name__ == "__main__":
+    main()

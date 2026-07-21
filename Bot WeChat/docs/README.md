@@ -82,7 +82,7 @@ README):
   `Menu.select('粘贴')` — o mesmo caminho de código do deadlock acima.
 
 Decisão (as duas vezes): não adotar `wxauto4` em nenhuma parte do fluxo.
-`wechat.py` já cobre mais do que o fork oferece pra essas funções, feito
+`wechat/` já cobre mais do que o fork oferece pra essas funções, feito
 a partir de dumps reais desta instalação (inglês), sem os riscos acima.
 
 ## Abordagem atual: automação própria com `pywinauto`
@@ -109,7 +109,7 @@ abandonado, com textos de menu em chinês tipo `'粘贴'`, nunca funcionava):
 | Botão de enviar | `text='Send'` (classe `mmui::XOutlineButton`) |
 | Lista de mensagens | `auto_id='chat_message_list'`; itens de texto são `class='mmui::ChatTextItemView'` (outros tipos, ex. `ChatItemView`, são só separador de horário) |
 
-Implementado em `wechat.py`: `find_wechat_window()`, `list_sessions()`,
+Implementado em `wechat/`: `find_wechat_window()`, `list_sessions()`,
 `list_unread_sessions()`, `open_chat()`, `send_message()`, `read_messages()`,
 `add_contact_by_phone()`, `find_or_start_chat()`, `start_group_chat()`,
 `send_file()`, `download_last_document()`.
@@ -120,7 +120,7 @@ morto).
 **Detalhe de implementação**: a versão instalada do `pywinauto` (0.6.9)
 não aceita `auto_id=` como filtro direto em `.descendants()`/`.children()`
 (só `class_name`/`title`/`control_type` chegam até a condição UIA) —
-`wechat.py` filtra por `auto_id` na mão em Python depois de buscar os
+`wechat/` filtra por `auto_id` na mão em Python depois de buscar os
 descendentes, em vez de passar isso como kwarg (que daria `TypeError`).
 
 ## Fluxo de adicionar contato novo (`add_contact_by_phone`)
@@ -300,29 +300,32 @@ não um contato real).
 python ui_mapping/inspect_ui.py                          # dump da janela principal em ui_mapping/dumps/ — sem clicar em nada
 python ui_mapping/inspect_ui.py --title "Add Contact"     # dump de qualquer outra janela aberta (diálogos)
 python explore.py                             # diagnóstico: lista sessões, lê histórico de TARGET_CHAT_NAME
-python main.py                                 # só lê e imprime as mensagens de TARGET_CHAT_NAME
-python main.py --test-reply                    # além de ler, manda TEST_MESSAGE pra TARGET_CHAT_NAME antes
-python main.py --echo-last                     # lê a última mensagem de TARGET_CHAT_NAME e reenvia ela mesma
-python main.py --test-add-contact <telefone>          # testa add_contact_by_phone isolado, usa TEST_MESSAGE
-python main.py --test-add-contact <telefone> "texto"  # idem, com mensagem específica
-python main.py --test-start-chat <nome>                # testa find_or_start_chat com um contato já existente
-python main.py --test-start-group <nome1> <nome2> ...   # testa start_group_chat com 2+ contatos já existentes
-python main.py --test-send-file <nome> <caminho>        # testa send_file com um arquivo local
-python main.py --watch-reply                            # vigia todas as conversas, responde mensagem nova com TEST_MESSAGE
-python main.py --watch-reply "texto"                    # idem, com texto específico
-python main.py --test-download-last-file <nome> <pasta>  # testa download_last_document
+python main.py                                  # só lê e imprime as mensagens de TARGET_CHAT_NAME
+
+# Testes manuais (tests/manual/) — cada um chama uma função de wechat/ isolada
+python tests/manual/send_test_message.py                    # manda TEST_MESSAGE (ou "texto") pra TARGET_CHAT_NAME
+python tests/manual/echo_last.py                             # lê a última mensagem de TARGET_CHAT_NAME e reenvia ela mesma
+python tests/manual/add_contact.py <telefone>                # testa add_contact_by_phone isolado, usa TEST_MESSAGE
+python tests/manual/add_contact.py <telefone> "texto"        # idem, com mensagem específica
+python tests/manual/start_chat.py <nome>                     # testa find_or_start_chat com um contato já existente
+python tests/manual/start_group.py <nome1> <nome2> ...       # testa start_group_chat com 2+ contatos já existentes
+python tests/manual/send_file.py <nome> <caminho>            # testa send_file com um arquivo local
+python tests/manual/watch_reply.py                           # vigia todas as conversas, responde mensagem nova com TEST_MESSAGE
+python tests/manual/watch_reply.py "texto"                   # idem, com texto específico
+python tests/manual/download_last_file.py <nome> <pasta>     # testa download_last_document
+python tests/manual/set_remark.py <nome> <apelido>           # testa set_contact_remark
 ```
 
 ## Pendências
 
 Testar ponta a ponta contra o WeChat real (implementado, seletores
 confirmados via dump, mas sem execução completa confirmada ainda):
-- [ ] `main.py --test-add-contact` (`add_contact_by_phone`).
-- [ ] `main.py --test-start-chat` (`find_or_start_chat`).
-- [ ] `main.py --test-start-group` com 2+ nomes (`start_group_chat` —
+- [ ] `tests/manual/add_contact.py` (`add_contact_by_phone`).
+- [ ] `tests/manual/start_chat.py` (`find_or_start_chat`).
+- [ ] `tests/manual/start_group.py` com 2+ nomes (`start_group_chat` —
       só testado até agora com 1 nome, que confirmou não formar grupo).
-- [ ] `main.py --test-send-file` (`send_file`).
-- [ ] `main.py --watch-reply` (`list_unread_sessions`).
+- [ ] `tests/manual/send_file.py` (`send_file`).
+- [ ] `tests/manual/watch_reply.py` (`list_unread_sessions`).
 - [ ] `main.py --test-download-last-file` (`download_last_document` —
       testado até agora só o caminho "Save as..."/já baixado; o caminho
       "Download to.../não baixado" ainda não foi exercitado ao vivo).

@@ -10,7 +10,7 @@ de verdade (ver README).
 from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
-import wechat
+from wechat import wechat
 
 
 def _text_mock(text, auto_id=""):
@@ -27,13 +27,15 @@ def _find_one_by_label(mapping):
 
 
 def _patch_wechat_internals(stack):
+    # Patch em wechat.wechat (não wechat.X): é o módulo onde as funções
+    # foram definidas, e é lá que o nome é resolvido em tempo de chamada.
     return {
-        "find_window_by_title": stack.enter_context(patch("wechat.find_window_by_title")),
-        "set_clipboard_text": stack.enter_context(patch("wechat._set_clipboard_text")),
-        "random_delay": stack.enter_context(patch("wechat._random_delay")),
-        "focus_window": stack.enter_context(patch("wechat._focus_window")),
-        "find_one": stack.enter_context(patch("wechat._find_one")),
-        "open_add_contact_dialog": stack.enter_context(patch("wechat.open_add_contact_dialog")),
+        "find_window_by_title": stack.enter_context(patch("wechat.wechat.find_window_by_title")),
+        "set_clipboard_text": stack.enter_context(patch("wechat.wechat._set_clipboard_text")),
+        "random_delay": stack.enter_context(patch("wechat.wechat._random_delay")),
+        "focus_window": stack.enter_context(patch("wechat.wechat._focus_window")),
+        "find_one": stack.enter_context(patch("wechat.wechat._find_one")),
+        "open_add_contact_dialog": stack.enter_context(patch("wechat.wechat.open_add_contact_dialog")),
     }
 
 

@@ -91,26 +91,67 @@ editável, confirmado ao vivo), cola o novo valor, confirma com Enter.
 do estado de edição — o clique no terminal pra rodar `inspect_ui.py`
 tira o foco do campo) — validar ao vivo com `--test-set-remark`.
 
-## Refactor: rotinas de teste manual saíram do main.py
+## Refactor: rotinas de teste manual viraram scripts standalone
 
-`main.py` virou só parsing de argumentos + despacho — cada rotina
-(`--test-add-contact`, `--test-start-chat`, etc.) agora é um módulo
-próprio em `tests/manual/` (`add_contact.py`, `start_chat.py`,
-`start_group.py`, `send_file.py`, `download_last_file.py`,
-`set_remark.py`, `watch_reply.py`, `read_messages.py`, `echo_last.py`,
-`send_test_message.py`), cada um com uma função `run(window, ...)`.
-Nomes SEM prefixo `test_` de propósito, pra não colidir com a descoberta
-automática de testes do pytest (que já roda os de verdade em
-`tests/pytests/`). Import via namespace package implícito
-(`from tests.manual import ...`), sem precisar de `__init__.py`.
+`main.py` não tem mais flags — ficou só o comportamento padrão (achar
+janela + ler/imprimir mensagens de `TARGET_CHAT_NAME`), reservado pro
+que rodar de verdade em produção mais pra frente. Cada teste manual
+(antes um `--test-*` do `main.py`) agora é um script standalone em
+`tests/manual/`, rodado direto (`python tests/manual/add_contact.py
+<telefone>`, etc.): `add_contact.py`, `start_chat.py`, `start_group.py`,
+`send_file.py`, `download_last_file.py`, `set_remark.py`,
+`watch_reply.py`, `read_messages.py`, `echo_last.py`,
+`send_test_message.py`.
+
+Cada script só faz parsing de args + chama `wechat/` direto (nenhuma
+lógica própria, sem camada de indireção tipo `run()`) — `wechat/`
+continua sendo a única fonte de lógica de verdade; os scripts manuais
+só existem pra facilitar chamar uma função individual pra teste, sem
+precisar de REPL. `_tests_setup.py` (mesma pasta) centraliza o setup
+repetido (achar janela, config, log, fix de `sys.path` pra achar
+`wechat/`/`config.py` dois níveis acima). Nomes sem prefixo `test_`
+de propósito, pra não colidir com a descoberta automática do pytest
+(que roda os testes de verdade em `tests/pytests/`).
+
+## Refactor: wechat.py virou pacote wechat/
+
+`wechat.py` (~600 linhas, tudo junto) virou a pasta `wechat/`:
+`wechat/wechat.py` (todas as funções, sem mudança de lógica) e
+`wechat/setup_wechat.py` (só as constantes/seletores, com descrição
+curta ao lado de cada uma quando não óbvia pelo nome). **Sem
+`__init__.py`** (pacote namespace implícito, decisão explícita do
+usuário — evita a camada extra de reexport) — todo arquivo que usa
+o módulo faz `from wechat import wechat` (não `import wechat` puro,
+que só pegaria o pacote vazio) e chama `wechat.X(...)` normalmente
+depois disso. Decisão consciente: **não** foi pra um arquivo por
+função — as funções se chamam entre si o tempo todo e compartilham
+os mesmos helpers, então isso só criaria risco de import circular
+sem ganho real, num código ainda pequeno (~20 funções).
+
+Pegadinha resolvida: os testes pytest faziam `patch("wechat.X")` —
+como as funções agora são definidas em `wechat.wechat`, não em
+`wechat/__init__.py`, o patch precisa mirar `wechat.wechat.X` (onde o
+nome é resolvido em tempo de chamada), senão o mock não afeta nada de
+verdade. Os dois arquivos de teste foram corrigidos, 6 continuam
+passando.
 
 ## Próximos passos concretos
 
-1. Validar `--test-set-remark` ao vivo (a parte do Enter é suposição).
+1. Validar `set_remark.py` ao vivo (a confirmação por Enter é suposição).
 2. Continuar o ciclo teste-ao-vivo → pytest pras funções que faltam:
-   `--test-start-group` (2+ nomes), `--test-send-file`, `--watch-reply`,
-   `--test-download-last-file` (testar especificamente um arquivo AINDA
-   NÃO baixado).
+   `start_group.py` (2+ nomes), `send_file.py`, `watch_reply.py`,
+   `download_last_file.py` (testar especificamente um arquivo AINDA NÃO
+   baixado).
+
+## Performance — não urgente, olhar no futuro
+
+`find_window_by_title`/`_click_by_text`/`_click_menu_item_by_prefix`
+chamam `Desktop(backend="uia").windows()`, que enumera TODAS as janelas
+de nível superior abertas no desktop (não só o WeChat) — 2 chamadas UIA
+por janela só pra filtrar. No servidor real, com várias janelas abertas
+(RDP), isso pode ficar caro. Não mexer sem medir antes quanto tempo
+cada chamada realmente leva nesse servidor — sem esse dado, ajustar
+`FIND_TIMEOUT_SECONDS`/`FIND_POLL_INTERVAL_SECONDS` é chute.
 
 ## Onde mais olhar
 
