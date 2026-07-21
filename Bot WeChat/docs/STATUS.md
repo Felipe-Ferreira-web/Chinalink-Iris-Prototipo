@@ -41,10 +41,11 @@ não importa de onde for chamado.
 | `add_contact_by_phone` | **Confirmado funcionando ao vivo.** Bug corrigido: campo de busca do diálogo "Add Contacts" não aceitava paste via Ctrl+V/clipboard — trocado pra digitar o telefone direto via keystrokes. Teste pytest: `tests/pytests/test_add_contact_by_phone.py` (3 casos, passando). |
 | `find_or_start_chat` | Testado ao vivo: **funcionou na 2ª tentativa, falhou na 1ª** (achava que tinha travado no botão "Messages"). Teste pytest escrito: `tests/pytests/test_find_or_start_chat.py` (3 casos, passando) — mas caracteriza o código ATUAL, que ainda tem o bug de tab abaixo. |
 | `send_message`/`read_messages`/`open_chat`/`list_sessions` | Confirmadas funcionando ao vivo em sessão anterior. Sem teste pytest ainda. |
-| `start_group_chat` | Implementada, testada só com 1 nome (WeChat abre conversa individual, não forma grupo — esperado). **Não testada com 2+ nomes.** |
+| `start_group_chat` | Implementada, testada só com 1 nome (WeChat abre conversa individual, não forma grupo — esperado). **Não testada com 2+ nomes** — bug de parâmetro com espaço em investigação (ver abaixo). |
 | `send_file` | Implementada. **Não testada ao vivo.** |
 | `list_unread_sessions` / `--watch-reply` | Implementada. **Não testada ao vivo.** |
 | `download_last_document` | Implementada. Só testado o caminho "já baixado" (Save as…); **"Download to…" nunca testado.** |
+| `set_contact_remark` | **Confirmado funcionando ao vivo (2026-07-21)** — Enter realmente confirma a edição do remark. Teste pytest: `tests/pytests/test_set_contact_remark.py` (2 casos, passando). |
 
 ## Bug corrigido: assumir a aba ativa
 
@@ -87,9 +88,20 @@ de perfil (aba Contacts):
 **Implementado**: `set_contact_remark(main_window, contact_name, remark)`
 — acha o contato na aba Contacts, clica no botão do remark (vira campo
 editável, confirmado ao vivo), cola o novo valor, confirma com Enter.
-**A confirmação por Enter é suposição** (não foi possível capturar dump
-do estado de edição — o clique no terminal pra rodar `inspect_ui.py`
-tira o foco do campo) — validar ao vivo com `--test-set-remark`.
+**Confirmado ao vivo (2026-07-21)**: Enter realmente salva o remark.
+Teste pytest: `tests/pytests/test_set_contact_remark.py`.
+
+**Descoberta confirmada por dump real (2026-07-21)**: depois que um
+contato tem alias, a sidebar passa a indexar por ele — dump mostrou
+`auto_id='session_item_Bobão'` (o alias), não mais o nome original.
+O nome original ainda funciona como termo de busca (localiza o contato),
+mas deixa de ser a chave exibida/gravada. **Regra de uso daqui pra
+frente**: qualquer chamada que referencie um contato já aliasado
+(`open_chat`, `send_message`, `find_or_start_chat`, comparações com
+`list_sessions`) precisa usar o **alias**, não o nome original — não é
+bug do `wechat.py` (as funções só usam a string recebida), é disciplina
+de chamada. Nome original só serve pra achar o contato a primeira vez /
+setar o alias.
 
 ## Refactor: rotinas de teste manual viraram scripts standalone
 
@@ -135,13 +147,45 @@ nome é resolvido em tempo de chamada), senão o mock não afeta nada de
 verdade. Os dois arquivos de teste foram corrigidos, 6 continuam
 passando.
 
+## Solicitação de amizade recebida: aceite automático, sem tela
+
+Testado ao vivo (2026-07-21): contato removido do Iris de propósito,
+depois pedido de amizade mandado de outro celular pro Iris. **Nenhuma
+ação manual no lado do Iris** — a sessão já apareceu direto na sidebar
+(`session_item_Felipe`, `[1]` não lida, mensagem de saudação padrão),
+sem nenhuma tela de "Accept"/"Decline" pra automatizar. Conclusão: essa
+conta tem a confirmação de amizade desativada (config de privacidade do
+WeChat) — quem manda pedido já vira sessão ativa direto.
+
+**Implicação**: não precisa de função nova pra "aceitar solicitação" —
+o loop que já existe (`list_unread_sessions`/`watch_reply.py`) já cobre
+esse caso, contato novo chega como qualquer sessão não lida. **Risco
+conhecido, não resolvido**: se o nome exibido do novo contato colidir
+com o de um contato já existente (mesmo problema de
+[[identificação única de contato]] de sempre), não tem telefone
+disponível pra usar de remark (diferente do fluxo `add_contact_by_phone`,
+que já sai com o telefone em mãos) — precisaria do WeChat ID via aba
+Contacts como identificador de fallback. Não resolver agora, só
+registrado.
+
+**Confirmado o espelho** (dump `ui_dump_request_accepted.txt`, mesmo
+dia): quando é o Iris que manda o pedido (via `add_contact_by_phone`) e
+a outra pessoa aceita, aparece exatamente igual — sessão nova com `[1]`
+e mensagem de sistema genérica ("Aceitei sua solicitação de amizade.
+Vamos conversar!"). Mesma conclusão: nenhuma detecção especial
+necessária, o loop de não lidas já cobre os dois sentidos. **Aberto,
+não resolvido**: essa frase é mensagem de sistema, não sabemos ainda se
+`read_messages`/`MESSAGE_TEXT_CLASS` captura ela como mensagem normal
+(faltaria dump do `chat_message_list` dessa conversa) — se capturar,
+`watch_reply.py` responderia a ela sem perceber que não é uma mensagem
+real da pessoa.
+
 ## Próximos passos concretos
 
-1. Validar `set_remark.py` ao vivo (a confirmação por Enter é suposição).
-2. Continuar o ciclo teste-ao-vivo → pytest pras funções que faltam:
-   `start_group.py` (2+ nomes), `send_file.py`, `watch_reply.py`,
-   `download_last_file.py` (testar especificamente um arquivo AINDA NÃO
-   baixado).
+1. Continuar o ciclo teste-ao-vivo → pytest pras funções que faltam:
+   `start_group.py` (2+ nomes, aspas em cada nome), `send_file.py`,
+   `watch_reply.py`, `download_last_file.py` (testar especificamente um
+   arquivo AINDA NÃO baixado).
 
 ## Performance — não urgente, olhar no futuro
 

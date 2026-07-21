@@ -1,7 +1,9 @@
 """Rotina manual: testa start_group_chat contra o WeChat real.
 
 Uso:
-    python start_group.py <nome1> <nome2> ...
+    python start_group.py "<nome1>" "<nome2>" ...
+
+Cada nome com espaço precisa de aspas próprias.
 """
 
 from __future__ import annotations

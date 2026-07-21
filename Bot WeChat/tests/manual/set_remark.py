@@ -1,7 +1,9 @@
 """Rotina manual: testa set_contact_remark contra o WeChat real.
 
 Uso:
-    python set_remark.py <nome> <apelido>
+    python set_remark.py "<nome>" "<apelido>"
+
+Nome ou apelido com espaço precisa de aspas.
 """
 
 from __future__ import annotations

@@ -1,7 +1,9 @@
 """Rotina manual: testa send_file contra o WeChat real.
 
 Uso:
-    python send_file.py <nome> <caminho>
+    python send_file.py "<nome>" "<caminho>"
+
+Nome ou caminho com espaço precisa de aspas.
 """
 
 from __future__ import annotations

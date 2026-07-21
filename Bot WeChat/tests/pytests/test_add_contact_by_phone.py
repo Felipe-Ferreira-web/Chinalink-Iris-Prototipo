@@ -48,12 +48,14 @@ def test_found_without_custom_message():
         search_button = MagicMock()
         ok_button = MagicMock()
         add_button = MagicMock()
+        close_button = MagicMock()
 
         mocks["open_add_contact_dialog"].return_value = dialog
         mocks["find_one"].side_effect = _find_one_by_label({
             "Campo de busca": search_field,
             "Botão 'Search'": search_button,
             "Botão 'OK'": ok_button,
+            "Botão de fechar": close_button,
         })
         mocks["find_window_by_title"].return_value = MagicMock()
         dialog.descendants.side_effect = lambda **kwargs: (
@@ -69,6 +71,7 @@ def test_found_without_custom_message():
         search_button.click_input.assert_called_once()
         add_button.click_input.assert_called_once()
         ok_button.click_input.assert_called_once()
+        close_button.click_input.assert_called_once()
         mocks["set_clipboard_text"].assert_not_called()
 
 
@@ -82,6 +85,7 @@ def test_found_with_custom_message():
         message_field = MagicMock()
         ok_button = MagicMock()
         add_button = MagicMock()
+        close_button = MagicMock()
 
         mocks["open_add_contact_dialog"].return_value = dialog
         mocks["find_one"].side_effect = _find_one_by_label({
@@ -89,6 +93,7 @@ def test_found_with_custom_message():
             "Botão 'Search'": search_button,
             "Campo de mensagem do pedido": message_field,
             "Botão 'OK'": ok_button,
+            "Botão de fechar": close_button,
         })
         mocks["find_window_by_title"].return_value = MagicMock()
         dialog.descendants.side_effect = lambda **kwargs: (
@@ -105,6 +110,7 @@ def test_found_with_custom_message():
         message_field.type_keys.assert_any_call("^v", pause=0.05)
         mocks["set_clipboard_text"].assert_any_call("Oi, tudo bem?")
         ok_button.click_input.assert_called_once()
+        close_button.click_input.assert_called_once()
 
 
 def test_not_found_returns_none():
@@ -114,11 +120,13 @@ def test_not_found_returns_none():
         dialog = MagicMock()
         search_field = MagicMock()
         search_button = MagicMock()
+        close_button = MagicMock()
 
         mocks["open_add_contact_dialog"].return_value = dialog
         mocks["find_one"].side_effect = _find_one_by_label({
             "Campo de busca": search_field,
             "Botão 'Search'": search_button,
+            "Botão de fechar": close_button,
         })
         dialog.descendants.side_effect = lambda **_kwargs: [_text_mock("User not found")]
 
@@ -126,3 +134,4 @@ def test_not_found_returns_none():
 
         assert result is None
         mocks["find_window_by_title"].assert_not_called()
+        close_button.click_input.assert_called_once()

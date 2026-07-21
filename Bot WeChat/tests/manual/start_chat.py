@@ -1,7 +1,9 @@
 """Rotina manual: testa find_or_start_chat contra o WeChat real.
 
 Uso:
-    python start_chat.py <nome>
+    python start_chat.py "<nome>"
+
+Nome com espaço precisa de aspas, senão vira 2+ argumentos.
 """
 
 from __future__ import annotations

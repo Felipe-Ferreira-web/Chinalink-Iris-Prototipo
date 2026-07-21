@@ -1,7 +1,9 @@
 """Rotina manual: testa download_last_document contra o WeChat real.
 
 Uso:
-    python download_last_file.py <nome> <pasta>
+    python download_last_file.py "<nome>" "<pasta>"
+
+Nome ou pasta com espaço precisa de aspas.
 """
 
 from __future__ import annotations

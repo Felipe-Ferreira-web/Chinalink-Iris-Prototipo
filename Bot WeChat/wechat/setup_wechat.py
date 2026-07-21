@@ -12,6 +12,7 @@ ADD_CONTACTS_MENU_TEXT = "Add Contacts"
 ADD_CONTACTS_WINDOW_TITLE = ("Add Contacts",)
 SEND_FRIEND_REQUEST_WINDOW_TITLE = ("Send Friend Request",)
 USER_NOT_FOUND_TEXT = "User not found"
+CLOSE_BUTTON_TEXT = "Disable"  # rótulo real do botão de fechar diálogo
 WEIXIN_TAB_TEXT = "Weixin"
 CONTACTS_TAB_TEXT = "Contacts"
 MESSAGES_BUTTON_TEXT = "Messages"

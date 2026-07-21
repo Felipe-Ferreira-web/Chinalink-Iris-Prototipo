@@ -14,6 +14,7 @@ from pywinauto import Desktop
 from .setup_wechat import (
     ADD_CONTACTS_MENU_TEXT,
     ADD_CONTACTS_WINDOW_TITLE,
+    CLOSE_BUTTON_TEXT,
     CONTACT_ITEM_CLASS,
     CONTACTS_TAB_TEXT,
     CURRENT_CHAT_LABEL_SUFFIX,
@@ -227,6 +228,13 @@ def open_add_contact_dialog(main_window):
     return find_window_by_title(ADD_CONTACTS_WINDOW_TITLE)
 
 
+def _close_dialog(dialog) -> None:
+    """Função para fechar uma janela de diálogo secundária."""
+    close_button = _find_one(dialog, "Botão de fechar", title=CLOSE_BUTTON_TEXT, control_type="Button")
+    _focus_window(dialog)
+    close_button.click_input()
+
+
 def add_contact_by_phone(main_window, phone: str, message: str | None = None) -> str | None:
     """Função para adicionar contato pelo telefone e mandar pedido."""
     dialog = open_add_contact_dialog(main_window)
@@ -261,6 +269,7 @@ def add_contact_by_phone(main_window, phone: str, message: str | None = None) ->
             if USER_NOT_FOUND_TEXT in d.window_text()
         ]
         if not_found:
+            _close_dialog(dialog)
             return None
         found = dialog.descendants(title="Add to Contacts", control_type="Button")
         if found:
@@ -302,6 +311,7 @@ def add_contact_by_phone(main_window, phone: str, message: str | None = None) ->
     ok_button = _find_one(request_window, "Botão 'OK'", title="OK", control_type="Button")
     _focus_window(request_window)
     ok_button.click_input()
+    _close_dialog(dialog)
     return nickname
 
 
