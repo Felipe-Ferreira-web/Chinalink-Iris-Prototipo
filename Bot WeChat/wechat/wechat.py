@@ -512,6 +512,11 @@ def send_file(window, chat_name: str, filepath: str) -> None:
     )
     _focus_window(dialog)
     open_button.click_input()
+    _random_delay(0.8, 1.5)  # dá tempo do anexo aparecer no compositor antes de enviar
+
+    send_button = _find_one(window, "Botão 'Send'", title="Send", control_type="Button")
+    _focus_window(window)
+    send_button.click_input()
 
 
 def download_last_document(window, chat_name: str, save_dir: str) -> str:
