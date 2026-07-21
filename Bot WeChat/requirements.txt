@@ -8,7 +8,7 @@
 pywinauto>=0.6.8
 python-dotenv>=1.0.0
 
-# Testes em tests/ (regressão sobre a lógica de wechat.py, com pywinauto
-# mockado — a verificação real é feita manualmente no servidor, contra
-# o WeChat de verdade; ver tests/README ou o próprio teste de cada função).
+# Testes de regressão em tests/pytests/ (pywinauto mockado — a verificação
+# real é manual, no servidor, contra o WeChat de verdade — rotinas em
+# tests/manual/, usadas pelos flags --test-*/--watch-reply do main.py).
 pytest>=8.0.0

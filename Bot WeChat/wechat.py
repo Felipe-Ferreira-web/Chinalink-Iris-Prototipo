@@ -54,6 +54,7 @@ WEIXIN_TAB_TEXT = "Weixin"
 CONTACTS_TAB_TEXT = "Contacts"
 MESSAGES_BUTTON_TEXT = "Messages"
 CONTACT_ITEM_CLASS = "mmui::ContactsCellItemView"
+REMARK_VALUE_CLASS = "mmui::ProfileDetailValueRemarkView"
 START_GROUP_CHAT_MENU_TEXT = "Start Group Chat"
 START_GROUP_CHAT_WINDOW_TITLE = ("Start Group Chat",)
 GROUP_CONTACT_ROW_CLASS = "mmui::SPSelectionContactRow"
@@ -343,12 +344,8 @@ def add_contact_by_phone(main_window, phone: str, message: str | None = None) ->
     return nickname
 
 
-def find_or_start_chat(main_window, contact_name: str) -> str | None:
-    """Função para procurar e abrir conversa."""
-    if contact_name in list_sessions(main_window):
-        open_chat(main_window, contact_name)
-        return contact_name
-
+def _find_contact_item(main_window, contact_name: str):
+    """Função para achar o item do contato na aba Contacts."""
     _switch_to_tab(main_window, CONTACTS_TAB_TEXT)
 
     # A busca da aba Contacts filtra a lista renderizada — a lista é um
@@ -365,11 +362,21 @@ def find_or_start_chat(main_window, contact_name: str) -> str | None:
         m for m in main_window.descendants(title=contact_name, control_type="ListItem")
         if m.element_info.class_name == CONTACT_ITEM_CLASS
     ]
-    if not matches:
+    return matches[0] if matches else None
+
+
+def find_or_start_chat(main_window, contact_name: str) -> str | None:
+    """Função para procurar e abrir conversa."""
+    if contact_name in list_sessions(main_window):
+        open_chat(main_window, contact_name)
+        return contact_name
+
+    item = _find_contact_item(main_window, contact_name)
+    if item is None:
         return None
 
     _focus_window(main_window)
-    matches[0].click_input()
+    item.click_input()
 
     messages_button = _find_one(
         main_window, "Botão 'Messages'", title=MESSAGES_BUTTON_TEXT, control_type="Button"
@@ -378,6 +385,34 @@ def find_or_start_chat(main_window, contact_name: str) -> str | None:
     messages_button.click_input()
 
     return get_current_chat_name(main_window)
+
+
+def set_contact_remark(main_window, contact_name: str, remark: str) -> None:
+    """Função para definir o apelido (remark) de um contato."""
+    item = _find_contact_item(main_window, contact_name)
+    if item is None:
+        raise RuntimeError(f"Contato {contact_name!r} não encontrado na aba Contacts.")
+
+    _focus_window(main_window)
+    item.click_input()
+
+    remark_button = _find_one(
+        main_window, "Botão de remark", class_name=REMARK_VALUE_CLASS, control_type="Button"
+    )
+    _focus_window(main_window)
+    remark_button.click_input()
+
+    # Confirmado ao vivo: clicar vira campo editável, pré-preenchido com o
+    # valor atual. Confirmar com Enter é suposição (sem dump do estado de
+    # edição) — validar ao vivo.
+    remark_field = _find_one(main_window, "Campo de remark", control_type="Edit")
+    _focus_window(main_window)
+    remark_field.click_input()
+    remark_field.type_keys("^a", pause=0.05)
+    _set_clipboard_text(remark)
+    remark_field.type_keys("^v", pause=0.05)
+    _random_delay()
+    remark_field.type_keys("{ENTER}")
 
 
 def open_start_group_chat_dialog(main_window):

@@ -2,6 +2,9 @@
 
 Substitui a versão antiga baseada no wxauto4 (abandonado — ver README).
 
+As rotinas de cada teste vivem em tests/manual/ (uma por arquivo); este
+módulo só faz o parsing de argumentos e despacha pra elas.
+
 Uso:
     python main.py                     # só lê e imprime as mensagens de TARGET_CHAT_NAME
     python main.py --test-reply        # além de ler, manda TEST_MESSAGE (do .env) antes
@@ -15,18 +18,28 @@ Uso:
     python main.py --watch-reply                            # vigia todas as conversas, responde mensagem nova com TEST_MESSAGE
     python main.py --watch-reply "texto"                    # idem, com texto específico
     python main.py --test-download-last-file <nome> <pasta>  # testa download_last_document
+    python main.py --test-set-remark <nome> <apelido>        # testa set_contact_remark
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
-import time
 
 import wechat
 from config import load_config, setup_logging
-
-WATCH_POLL_INTERVAL_SECONDS = 5
+from tests.manual import (
+    add_contact,
+    download_last_file,
+    echo_last,
+    read_messages,
+    send_file,
+    send_test_message,
+    set_remark,
+    start_chat,
+    start_group,
+    watch_reply,
+)
 
 log = logging.getLogger("main")
 
@@ -90,6 +103,12 @@ def parse_args() -> argparse.Namespace:
         help="Testa download_last_document: baixa o arquivo mais recente de NOME "
         "pra dentro de PASTA.",
     )
+    parser.add_argument(
+        "--test-set-remark",
+        nargs=2,
+        metavar=("NOME", "APELIDO"),
+        help="Testa set_contact_remark: define APELIDO (remark) pro contato NOME.",
+    )
     return parser.parse_args()
 
 
@@ -105,93 +124,45 @@ def main() -> None:
     if args.test_add_contact is not None:
         phone = args.test_add_contact[0]
         text = args.test_add_contact[1] if len(args.test_add_contact) > 1 else config.test_message
-        log.info("Adicionando %s como contato novo no WeChat...", phone)
-        nickname = wechat.add_contact_by_phone(window, phone, message=text)
-        if not nickname:
-            log.warning("Telefone %s não corresponde a nenhum contato do WeChat.", phone)
-            return
-        log.info("Pedido de amizade enviado (apelido no WeChat: %r, mensagem: %r).", nickname, text)
+        add_contact.run(window, phone, text)
         return
 
     if args.test_start_chat is not None:
-        log.info("Abrindo conversa com %r...", args.test_start_chat)
-        chat_name = wechat.find_or_start_chat(window, args.test_start_chat)
-        if not chat_name:
-            log.warning("%r não encontrado nos contatos.", args.test_start_chat)
-            return
-        log.info("Conversa aberta: %r", chat_name)
+        start_chat.run(window, args.test_start_chat)
         return
 
     if args.test_start_group is not None:
-        log.info("Criando grupo com %r...", args.test_start_group)
-        chat_name = wechat.start_group_chat(window, args.test_start_group)
-        if not chat_name:
-            log.warning(
-                "Algum nome em %r não foi encontrado nos contatos — diálogo cancelado.",
-                args.test_start_group,
-            )
-            return
-        log.info("Conversa de grupo aberta: %r", chat_name)
+        start_group.run(window, args.test_start_group)
         return
 
     if args.test_send_file is not None:
         chat_name, filepath = args.test_send_file
-        log.info("Mandando %r pra %r...", filepath, chat_name)
-        wechat.send_file(window, chat_name, filepath)
-        log.info("Enviado.")
+        send_file.run(window, chat_name, filepath)
         return
 
     if args.test_download_last_file is not None:
         chat_name, save_dir = args.test_download_last_file
-        log.info("Baixando arquivo mais recente de %r pra %r...", chat_name, save_dir)
-        save_path = wechat.download_last_document(window, chat_name, save_dir)
-        log.info("Salvo em: %s", save_path)
+        download_last_file.run(window, chat_name, save_dir)
+        return
+
+    if args.test_set_remark is not None:
+        chat_name, remark = args.test_set_remark
+        set_remark.run(window, chat_name, remark)
         return
 
     if args.watch_reply is not None:
         text = config.test_message if args.watch_reply == "__use_config__" else args.watch_reply
-        log.info(
-            "Vigiando todas as conversas (a cada %ds). Ctrl+C pra sair.",
-            WATCH_POLL_INTERVAL_SECONDS,
-        )
-        seen_counts: dict[str, int] = {}
-        try:
-            while True:
-                for chat_name in wechat.list_unread_sessions(window):
-                    messages = wechat.read_messages(window, chat_name)
-                    seen = seen_counts.get(chat_name, 0)
-                    new_messages = messages[seen:]
-                    seen_counts[chat_name] = len(messages)
-                    if new_messages:
-                        log.info("Mensagem(ns) nova(s) em %r: %r", chat_name, new_messages)
-                        wechat.send_message(window, chat_name, text)
-                        log.info("Respondido em %r.", chat_name)
-                time.sleep(WATCH_POLL_INTERVAL_SECONDS)
-        except KeyboardInterrupt:
-            log.info("Encerrando.")
+        watch_reply.run(window, text)
         return
 
     if args.test_reply is not None:
         text = config.test_message if args.test_reply == "__use_config__" else args.test_reply
-        log.info("Enviando mensagem de teste para %s: %r", config.target_chat_name, text)
-        wechat.send_message(window, config.target_chat_name, text)
-        log.info("Enviado.")
+        send_test_message.run(window, config.target_chat_name, text)
 
-    log.info("Lendo mensagens de '%s'...", config.target_chat_name)
-    messages = wechat.read_messages(window, config.target_chat_name)
-    log.info("%d mensagens de texto encontradas:", len(messages))
-    for text in messages:
-        log.info("  %s", text)
+    messages = read_messages.run(window, config.target_chat_name)
 
     if args.echo_last:
-        if not messages:
-            raise RuntimeError(
-                f"Nenhuma mensagem encontrada em '{config.target_chat_name}' pra ecoar."
-            )
-        last_message = messages[-1]
-        log.info("Reenviando a última mensagem lida: %r", last_message)
-        wechat.send_message(window, config.target_chat_name, last_message)
-        log.info("Ecoado.")
+        echo_last.run(window, config.target_chat_name, messages)
 
 
 if __name__ == "__main__":
