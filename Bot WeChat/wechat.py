@@ -50,6 +50,7 @@ ADD_CONTACTS_MENU_TEXT = "Add Contacts"
 ADD_CONTACTS_WINDOW_TITLE = ("Add Contacts",)
 SEND_FRIEND_REQUEST_WINDOW_TITLE = ("Send Friend Request",)
 USER_NOT_FOUND_TEXT = "User not found"
+WEIXIN_TAB_TEXT = "Weixin"
 CONTACTS_TAB_TEXT = "Contacts"
 MESSAGES_BUTTON_TEXT = "Messages"
 CONTACT_ITEM_CLASS = "mmui::ContactsCellItemView"
@@ -161,6 +162,7 @@ def _set_clipboard_text(text: str) -> None:
 
 def list_sessions(window) -> list[str]:
     """Função para listar os nomes das conversas na sidebar."""
+    _switch_to_tab(window, WEIXIN_TAB_TEXT)
     session_list = _find_one(window, "Lista de conversas", auto_id="session_list")
     names = []
     for item in session_list.children(control_type="ListItem"):
@@ -172,6 +174,7 @@ def list_sessions(window) -> list[str]:
 
 def list_unread_sessions(window) -> list[str]:
     """Função para listar conversas com mensagem não lida."""
+    _switch_to_tab(window, WEIXIN_TAB_TEXT)
     session_list = _find_one(window, "Lista de conversas", auto_id="session_list")
     names = []
     for item in session_list.children(control_type="ListItem"):
@@ -206,6 +209,15 @@ def _focus_window(window) -> None:
     # estiver visível ali, não no WeChat. Refoca antes de CADA ação.
     window.set_focus()
     _random_delay()
+
+
+def _switch_to_tab(main_window, tab_text: str) -> None:
+    """Função para trocar de aba antes de agir, nunca assumir."""
+    tab_button = _find_one(
+        main_window, f"Aba '{tab_text}'", title=tab_text, control_type="Button"
+    )
+    _focus_window(main_window)
+    tab_button.click_input()
 
 
 def _click_by_text(text: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
@@ -337,11 +349,7 @@ def find_or_start_chat(main_window, contact_name: str) -> str | None:
         open_chat(main_window, contact_name)
         return contact_name
 
-    tab_button = _find_one(
-        main_window, "Aba 'Contacts'", title=CONTACTS_TAB_TEXT, control_type="Button"
-    )
-    _focus_window(main_window)
-    tab_button.click_input()
+    _switch_to_tab(main_window, CONTACTS_TAB_TEXT)
 
     # A busca da aba Contacts filtra a lista renderizada — a lista é um
     # Recycler (StickyHeaderRecyclerListView), então um contato fora da
@@ -420,6 +428,7 @@ def start_group_chat(main_window, contact_names: list[str]) -> str | None:
 
 def open_chat(window, chat_name: str) -> None:
     """Função para abrir uma conversa já existente na sidebar."""
+    _switch_to_tab(window, WEIXIN_TAB_TEXT)
     # Clicar numa conversa que já está aberta a FECHA (é toggle, não "abrir
     # garantido") — sempre confirma o estado atual antes de agir.
     if get_current_chat_name(window) == chat_name:

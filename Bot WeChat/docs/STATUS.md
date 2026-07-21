@@ -45,7 +45,7 @@ não importa de onde for chamado.
 | `list_unread_sessions` / `--watch-reply` | Implementada. **Não testada ao vivo.** |
 | `download_last_document` | Implementada. Só testado o caminho "já baixado" (Save as…); **"Download to…" nunca testado.** |
 
-## Bug conhecido, ainda não corrigido: assumir a aba ativa
+## Bug corrigido: assumir a aba ativa
 
 **Diagnóstico do usuário** (explica a flakiness do `find_or_start_chat`):
 funções que dependem da aba "Weixin" (lista de conversas, `session_item_*`)
@@ -56,22 +56,19 @@ ou trava esperando um elemento que nunca aparece. Mesmo padrão de
 [[feedback-ui-automation-check-state-before-acting]], em nível de aba.
 Detalhes salvos na memória: `feedback_wechat_ensure_tab_before_acting`.
 
-**Fix proposto, ainda não implementado**: clicar explicitamente na aba
-certa no início de cada função que depende dela, em vez de assumir:
-- Precisam da aba **"Weixin"**: `list_sessions`, `list_unread_sessions`,
-  `open_chat` (cobre por chamada `send_message`, `read_messages`,
-  `send_file`, `download_last_document`, e o caminho rápido do
-  `find_or_start_chat`).
-- Já garantem **"Contacts"** explicitamente (sem mudança necessária):
-  `find_or_start_chat` (fallback) e `start_group_chat`.
+**Fix implementado**: novo helper `_switch_to_tab(main_window, tab_text)`
+que clica explicitamente na aba antes de agir. Aplicado em `list_sessions`,
+`list_unread_sessions` e `open_chat` (aba "Weixin" — cobre por chamada
+`send_message`, `read_messages`, `send_file`, `download_last_document`,
+e o caminho rápido do `find_or_start_chat`). `find_or_start_chat`
+(fallback pra Contacts) refatorado pra usar o mesmo helper. Compilado e
+os 6 testes pytest continuam passando. **Ainda não re-testado ao vivo.**
 
 ## Próximos passos concretos
 
-1. Implementar o fix de troca de aba acima (`open_chat`/`list_sessions`/
-   `list_unread_sessions` clicando "Weixin" primeiro).
-2. Re-testar `--test-start-chat` algumas vezes pra confirmar que a
-   flakiness some.
-3. Continuar o ciclo teste-ao-vivo → pytest pras funções que faltam:
+1. Re-testar `--test-start-chat` algumas vezes (contato com e sem sessão
+   prévia) pra confirmar que a flakiness some com o fix de aba.
+2. Continuar o ciclo teste-ao-vivo → pytest pras funções que faltam:
    `--test-start-group` (2+ nomes), `--test-send-file`, `--watch-reply`,
    `--test-download-last-file` (testar especificamente um arquivo AINDA
    NÃO baixado).
