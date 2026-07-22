@@ -25,7 +25,7 @@ pytest (`requirements.txt`).
 ```
 docs/            README.md, STATUS.md
 tests/pytests/   conftest.py (stub de libs Windows-only), test_*.py
-tests/manual/    rotinas dos flags --test-*/--watch-reply do main.py
+tests/manual/    rotinas standalone de teste ao vivo (add_contact.py etc.)
 ui_mapping/      inspect_ui.py, dumps/*.txt
 ```
 
@@ -43,8 +43,8 @@ não importa de onde for chamado.
 | `send_message`/`read_messages`/`open_chat`/`list_sessions` | Confirmadas funcionando ao vivo em sessão anterior. Sem teste pytest ainda. |
 | `start_group_chat` | Implementada, testada só com 1 nome (WeChat abre conversa individual, não forma grupo — esperado). **Não testada com 2+ nomes** — bug de parâmetro com espaço em investigação (ver abaixo). |
 | `send_file` | **Confirmado funcionando ao vivo (2026-07-21)**, depois de 2 fixes: diálogo nativo aninhado + clique em Send faltando (ver abaixo). Teste pytest: `tests/pytests/test_send_file.py`. |
-| `list_unread_sessions` / `--watch-reply` | Implementada. **Não testada ao vivo.** |
-| `download_last_document` | **Em redesign, não terminado** (ver seção própria abaixo) — implementação atual (diálogo nativo "Save as…") tem os bugs de janela aninhada e coordenada de clique já corrigidos, mas está sendo trocada por uma abordagem mais simples descoberta ao vivo. |
+| `list_unread_sessions` / `watch_messages.py` | Implementada. **Não testada ao vivo.** Só detecta e imprime (não responde mais — ver seção própria abaixo). |
+| `download_last_document` | **Confirmado funcionando ao vivo (2026-07-22)**, com a abordagem nova (ver seção própria abaixo) — sem clique, busca recursiva na pasta de storage. Teste pytest: `tests/pytests/test_download_last_document.py` (3 casos). |
 | `set_contact_remark` | **Confirmado funcionando ao vivo (2026-07-21)** — Enter realmente confirma a edição do remark. Teste pytest: `tests/pytests/test_set_contact_remark.py` (2 casos, passando). |
 
 ## Bug corrigido: assumir a aba ativa
@@ -112,7 +112,7 @@ que rodar de verdade em produção mais pra frente. Cada teste manual
 `tests/manual/`, rodado direto (`python tests/manual/add_contact.py
 <telefone>`, etc.): `add_contact.py`, `start_chat.py`, `start_group.py`,
 `send_file.py`, `download_last_file.py`, `set_remark.py`,
-`watch_reply.py`, `read_messages.py`, `echo_last.py`,
+`watch_messages.py`, `read_messages.py`, `echo_last.py`,
 `send_test_message.py`.
 
 Cada script só faz parsing de args + chama `wechat/` direto (nenhuma
@@ -158,8 +158,8 @@ conta tem a confirmação de amizade desativada (config de privacidade do
 WeChat) — quem manda pedido já vira sessão ativa direto.
 
 **Implicação**: não precisa de função nova pra "aceitar solicitação" —
-o loop que já existe (`list_unread_sessions`/`watch_reply.py`) já cobre
-esse caso, contato novo chega como qualquer sessão não lida. **Risco
+o loop que já existe (`list_unread_sessions`/`watch_messages.py`) já
+cobre esse caso, contato novo chega como qualquer sessão não lida. **Risco
 conhecido, não resolvido**: se o nome exibido do novo contato colidir
 com o de um contato já existente (mesmo problema de
 [[identificação única de contato]] de sempre), não tem telefone
@@ -176,9 +176,9 @@ Vamos conversar!"). Mesma conclusão: nenhuma detecção especial
 necessária, o loop de não lidas já cobre os dois sentidos. **Aberto,
 não resolvido**: essa frase é mensagem de sistema, não sabemos ainda se
 `read_messages`/`MESSAGE_TEXT_CLASS` captura ela como mensagem normal
-(faltaria dump do `chat_message_list` dessa conversa) — se capturar,
-`watch_reply.py` responderia a ela sem perceber que não é uma mensagem
-real da pessoa.
+(faltaria dump do `chat_message_list` dessa conversa) — hoje isso só
+apareceria logado por `watch_messages.py` (que não responde mais nada
+sozinho, ver seção abaixo), não é mais um risco de ação indevida.
 
 ## Bug corrigido: diálogo nativo não encontrado (send_file / download_last_document)
 
@@ -217,6 +217,14 @@ aninhados). Cheguei a "corrigir" isso pra busca aninhada por engano
 (mesmo padrão dos diálogos) e tive que reverter — o menu de contexto
 é o caso oposto.
 
+## Histórico: abordagem antiga de diálogo nativo (abandonada)
+
+As duas seções abaixo (coordenada de clique + sobrescrita) descrevem a
+abordagem por diálogo nativo "Save as…", **substituída** pela busca
+recursiva (ver "Redesign" mais abaixo). Código removido do `wechat.py`.
+Fica só de referência, útil se algum dia precisar suportar o caso de
+arquivo >20MB ("Not Downloaded").
+
 ## Bug corrigido: coordenada de clique no balão de arquivo (download_last_document)
 
 **Sintoma**: `bubble.right_click_input()` não abria menu nenhum —
@@ -248,7 +256,7 @@ até achar um nome livre, ANTES de abrir o diálogo (nunca aciona a
 confirmação de sobrescrita). Não testado ao vivo ainda (achado antes do
 redesign abaixo).
 
-## Redesign em andamento: download_last_document via pasta fixa + busca recursiva
+## Redesign concluído: download_last_document via storage + busca recursiva
 
 **Descoberta ao vivo (2026-07-21)**, via dump do menu de Settings
 (`ui_dump_settings.txt`): o WeChat tem duas configs relevantes —
@@ -278,24 +286,49 @@ caminho exato. Isso substitui TODA a lógica de `_find_nested_window_by_title`
 + `_unique_save_path` + diálogo "Save as…"/"Download to…" pra esse fluxo
 (fica mais simples e robusto).
 
-**Falta antes de implementar**:
-1. Confirmar o texto EXATO do item de menu "Download" (dump do menu de
-   contexto num arquivo ainda não baixado — `ui_dump_download.txt` só
-   tem "Save as…", não "Download" simples).
-2. Decidir onde guardar o caminho da pasta de storage fixa (constante
-   em `setup_wechat.py`? campo em `.env`/`config.py`? — ainda não
-   decidido).
-3. Reescrever `download_last_document` usando o plano acima.
-4. Testar ao vivo, depois escrever o teste pytest.
+**Implementado e confirmado ao vivo (2026-07-22)**: `download_last_document(window,
+chat_name, storage_root)` — só levanta erro se "Not Downloaded" (>20MB,
+caso não suportado ainda); senão busca `storage_root.rglob(f"{stem}*{suffix}")`
+(padrão, não nome exato) e devolve o mais recente por mtime. Não usa
+mais diálogo nativo, `_click_menu_item_by_prefix` nem "Download"/"Download
+to…" — todo esse código foi removido (morto). `_unique_save_path` também
+removido (só fazia sentido pro fluxo de diálogo antigo).
+
+**Pegadinha resolvida**: o nome do arquivo em disco pode ter sufixo
+próprio do WeChat (ex.: bolha mostra "arquivo.txt", mas o arquivo real
+é "arquivo(2).txt" se já existia outro com esse nome) — por isso a
+busca é por padrão (`stem*sufixo`), não por nome exato.
+
+**Config nova**: `WECHAT_STORAGE_ROOT` em `.env`/`config.py` — raiz de
+storage do WeChat (Settings > Storage location). **Específico de
+máquina/conta — precisa reconfirmar se migrar de servidor Windows, de
+conta WeChat, ou for pra produção.** Não vale a pena mudar esse valor
+no WeChat (testado): a estrutura aninhada (`wxid_..._sufixo/msg/file/
+<ano-mês>/`) persiste não importa a raiz, só muda onde ela fica.
+
+Teste pytest: `tests/pytests/test_download_last_document.py` (3 casos,
+usa `tmp_path` real do pytest pra simular arquivos em disco — não
+mocka `Path`, só as chamadas pywinauto).
+
+## Redesign: watch_reply.py virou watch_messages.py (não responde mais)
+
+**Motivo** (usuário, 2026-07-22): responder automaticamente com um
+texto fixo pra qualquer mensagem nova não faz sentido sem entender o
+conteúdo — isso só vai fazer sentido quando existir uma IA real
+decidindo a resposta. Até lá, o script só serve pra confirmar que a
+detecção de mensagem nova funciona.
+
+**Mudança**: renomeado `watch_reply.py` → `watch_messages.py`, removido
+`wechat.send_message` e o argumento `texto`. Agora só imprime (via log,
+que já tem horário): número sequencial da notificação, nome da conversa
+e o texto da mensagem nova. **Ainda não testado ao vivo.**
 
 ## Próximos passos concretos (ordem sugerida pra retomar)
 
-1. Terminar o redesign do `download_last_document` (ver seção acima) —
-   é o que estava em andamento quando a sessão parou.
-2. `watch_reply.py` — nunca testado ao vivo.
-3. `start_group.py` com 2+ nomes — bloqueado por enquanto, falta um
+1. `watch_messages.py` — nunca testado ao vivo.
+2. `start_group.py` com 2+ nomes — bloqueado por enquanto, falta um
    segundo celular pra testar.
-4. Bug de espaço em nome/caminho passado por linha de comando: **não é
+3. Bug de espaço em nome/caminho passado por linha de comando: **não é
    bug de código, é uso do cmd do Windows** — `\"` no fim de um argumento
    entre aspas vira aspas literal dentro do valor, não fecha a string.
    Nunca terminar um argumento quotado com `\` antes da aspas de

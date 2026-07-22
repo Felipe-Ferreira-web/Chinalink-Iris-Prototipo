@@ -1,10 +1,6 @@
-"""Caracterização de send_file — trava o comportamento confirmado ao
-vivo (2026-07-21): clica no botão de anexar, digita o caminho completo
-no diálogo nativo "Select File" (aninhado na janela principal, não no
-desktop — ver docs/STATUS.md), confirma com Open, e clica em Send pra
-mandar o arquivo anexado. pywinauto é todo mockado; a verificação real
-é manual, no servidor, contra o WeChat de verdade (ver docs/README.md).
-"""
+"""Caracterização de send_file: anexa via diálogo nativo "Select File"
+(aninhado, não no desktop), confirma e clica Send. pywinauto mockado —
+verificação real é manual (ver docs/README.md)."""
 
 from contextlib import ExitStack
 from unittest.mock import MagicMock, patch

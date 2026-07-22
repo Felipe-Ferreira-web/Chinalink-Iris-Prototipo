@@ -1,9 +1,5 @@
 """Diagnóstico via pywinauto — sem efeito colateral, não envia nada.
-
-Roda isso primeiro. Conecta na janela do WeChat já aberta, lista as
-conversas da sidebar e lê o histórico da conversa alvo. Substitui a
-versão antiga baseada no wxauto4 (abandonado — ver README).
-"""
+Lista conversas da sidebar e lê histórico da conversa alvo."""
 
 from __future__ import annotations
 

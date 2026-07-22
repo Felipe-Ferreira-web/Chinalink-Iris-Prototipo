@@ -235,10 +235,10 @@ não é um badge/elemento visual separado. Confirmado no dump real:
 
 `list_unread_sessions()` casa a 2ª linha contra `UNREAD_MARKER_RE`
 (`^\[(\d+)\]$`) — mesmo princípio já usado pro prefixo `[File]`, só que
-aqui é um número entre colchetes. `main.py --watch-reply` usa isso pra
-vigiar a sidebar inteira em loop (em vez de um chat fixo), lê mensagem
-nova por conversa (comparando com a contagem já vista, em memória — sem
-persistir em arquivo ainda) e responde.
+aqui é um número entre colchetes. `tests/manual/watch_messages.py` usa
+isso pra vigiar a sidebar inteira em loop (em vez de um chat fixo), lê
+mensagem nova por conversa (comparando com a contagem já vista, em
+memória — sem persistir em arquivo ainda) e imprime.
 
 ## Fluxo de baixar documento recebido (`download_last_document`)
 
@@ -310,9 +310,8 @@ python tests/manual/add_contact.py <telefone> "texto"        # idem, com mensage
 python tests/manual/start_chat.py <nome>                     # testa find_or_start_chat com um contato já existente
 python tests/manual/start_group.py <nome1> <nome2> ...       # testa start_group_chat com 2+ contatos já existentes
 python tests/manual/send_file.py <nome> <caminho>            # testa send_file com um arquivo local
-python tests/manual/watch_reply.py                           # vigia todas as conversas, responde mensagem nova com TEST_MESSAGE
-python tests/manual/watch_reply.py "texto"                   # idem, com texto específico
-python tests/manual/download_last_file.py <nome> <pasta>     # testa download_last_document
+python tests/manual/watch_messages.py                        # vigia todas as conversas, imprime mensagem nova
+python tests/manual/download_last_file.py <nome>             # testa download_last_document
 python tests/manual/set_remark.py <nome> <apelido>           # testa set_contact_remark
 ```
 
@@ -325,10 +324,10 @@ confirmados via dump, mas sem execução completa confirmada ainda):
 - [ ] `tests/manual/start_group.py` com 2+ nomes (`start_group_chat` —
       só testado até agora com 1 nome, que confirmou não formar grupo).
 - [ ] `tests/manual/send_file.py` (`send_file`).
-- [ ] `tests/manual/watch_reply.py` (`list_unread_sessions`).
-- [ ] `main.py --test-download-last-file` (`download_last_document` —
-      testado até agora só o caminho "Save as..."/já baixado; o caminho
-      "Download to.../não baixado" ainda não foi exercitado ao vivo).
+- [ ] `tests/manual/watch_messages.py` (`list_unread_sessions`).
+- [ ] `tests/manual/download_last_file.py` (`download_last_document` —
+      só cobre arquivo já baixado; arquivo >20MB ("Not Downloaded")
+      ainda não é suportado).
 
 Outros itens, sem prazo definido:
 - [ ] Confirmar se a automação também cobre WeCom (cliente corporativo)

@@ -1,9 +1,5 @@
 """Lê e imprime as mensagens de TARGET_CHAT_NAME (do .env).
 
-Testes contra o WeChat real viraram scripts standalone em tests/manual/
-(ex.: python tests/manual/add_contact.py <telefone>) — não passam mais
-por aqui. Testes de regressão (pywinauto mockado) ficam em tests/pytests/.
-
 Uso:
     python main.py
 """

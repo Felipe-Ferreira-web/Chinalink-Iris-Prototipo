@@ -1,9 +1,6 @@
-"""Caracterização de set_contact_remark — trava o comportamento
-confirmado ao vivo (2026-07-21): acha o contato na aba Contacts, abre o
-campo de remark (clique vira Edit pré-preenchido), cola o novo valor e
-confirma com Enter. pywinauto é todo mockado; a verificação real é
-manual, no servidor, contra o WeChat de verdade (ver docs/README.md).
-"""
+"""Caracterização de set_contact_remark: abre o campo de remark, cola
+o valor, confirma com Enter. pywinauto mockado — verificação real é
+manual (ver docs/README.md)."""
 
 from contextlib import ExitStack
 from unittest.mock import MagicMock, patch

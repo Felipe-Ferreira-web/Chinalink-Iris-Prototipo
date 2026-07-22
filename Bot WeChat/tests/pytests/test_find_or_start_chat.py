@@ -1,10 +1,6 @@
-"""Caracterização de find_or_start_chat — trava o comportamento
-confirmado ao vivo (2026-07-20): contato já na sidebar usa o caminho
-rápido (`open_chat`); contato sem sessão é buscado na aba Contacts e
-aberto pelo botão "Messages" do perfil; nome sem correspondência
-retorna `None`. pywinauto é todo mockado; a verificação real é manual,
-no servidor, contra o WeChat de verdade (ver docs/README.md).
-"""
+"""Caracterização de find_or_start_chat: sessão existente usa
+open_chat; sem sessão busca em Contacts; sem match retorna None.
+pywinauto mockado — verificação real é manual (ver docs/README.md)."""
 
 from contextlib import ExitStack
 from unittest.mock import MagicMock, patch

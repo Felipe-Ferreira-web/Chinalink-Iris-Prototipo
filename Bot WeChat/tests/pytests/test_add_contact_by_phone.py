@@ -1,11 +1,6 @@
-"""Caracterização de add_contact_by_phone — trava o comportamento
-confirmado ao vivo em 2026-07-20: abre o diálogo "Add Contacts", digita
-o telefone direto por keystrokes (não por clipboard/Ctrl+V — esse campo
-especificamente não reagia a paste), decide found/not-found, e manda o
-pedido de amizade com ou sem mensagem customizada. pywinauto é todo
-mockado aqui; a verificação real é manual, no servidor, contra o WeChat
-de verdade (ver README).
-"""
+"""Caracterização de add_contact_by_phone: telefone digitado por
+keystrokes, found/not-found, pedido com/sem mensagem. pywinauto
+mockado — verificação real é manual (ver docs/README.md)."""
 
 from contextlib import ExitStack
 from unittest.mock import MagicMock, patch

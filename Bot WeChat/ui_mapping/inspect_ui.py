@@ -1,16 +1,5 @@
 """Dump da árvore real de controles do WeChat, via pywinauto (UI Automation).
-
-Sem efeito colateral: não clica em nada, só lê e salva a árvore de
-controles da janela do WeChat já aberta. Serve pra descobrir os nomes,
-classes e tipos REAIS dos elementos (caixa de busca, lista de conversas
-na sidebar, campo de digitar mensagem, botão de enviar) antes de escrever
-qualquer automação em cima disso — em vez de confiar nos nomes "chutados"
-pelo fork wxauto4 (gerado por IA a partir só da documentação, nunca
-testado contra o app de verdade — ver README).
-
-Dump implementado na mão (não usa print_control_identifiers) porque esse
-método só existe em WindowSpecification (via Application().connect()),
-não nos objetos crus que Desktop().windows() devolve.
+Sem efeito colateral — só lê, nunca clica. Porquê no docs/README.md.
 
 Uso (de qualquer diretório):
     python ui_mapping/inspect_ui.py                  # janela principal
