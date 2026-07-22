@@ -527,7 +527,11 @@ def download_last_document(window, chat_name: str, storage_root: str) -> str:
 
     # Abaixo do limite de auto-download, o WeChat já salva sozinho em
     # <storage_root>/wxid_.../msg/file/<ano-mês>/ — só localizar, sem UI.
-    matches = list(Path(storage_root).rglob(filename))
+    # Nome em disco pode ter sufixo próprio do WeChat (ex.: "arquivo(2).txt")
+    # se já existia outro arquivo com o mesmo nome — busca por padrão, não
+    # por nome exato, e pega o mais recente entre as batidas.
+    stem, suffix = Path(filename).stem, Path(filename).suffix
+    matches = list(Path(storage_root).rglob(f"{stem}*{suffix}"))
     if not matches:
         raise RuntimeError(f"{filename!r} não encontrado em {storage_root!r}.")
     return str(max(matches, key=lambda p: p.stat().st_mtime))
