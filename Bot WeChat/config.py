@@ -22,6 +22,7 @@ class Config:
     listen_duration_seconds: float
     log_level: str
     test_phone: str
+    wechat_storage_root: str
 
 
 def load_config() -> Config:
@@ -31,6 +32,12 @@ def load_config() -> Config:
         listen_duration_seconds=float(_get("LISTEN_DURATION_SECONDS", "30")),
         log_level=_get("LOG_LEVEL", "INFO").upper(),
         test_phone=_get("TEST_PHONE", ""),
+        # Específico de máquina/conta — reconfirmar (Settings > Storage
+        # location no WeChat) se trocar de servidor ou for pra produção.
+        wechat_storage_root=_get(
+            "WECHAT_STORAGE_ROOT",
+            r"C:\Users\fsantos\Documents\xwechat_files",
+        ),
     )
     if not config.target_chat_name:
         raise RuntimeError(

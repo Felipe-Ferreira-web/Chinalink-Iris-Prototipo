@@ -44,7 +44,7 @@ não importa de onde for chamado.
 | `start_group_chat` | Implementada, testada só com 1 nome (WeChat abre conversa individual, não forma grupo — esperado). **Não testada com 2+ nomes** — bug de parâmetro com espaço em investigação (ver abaixo). |
 | `send_file` | **Confirmado funcionando ao vivo (2026-07-21)**, depois de 2 fixes: diálogo nativo aninhado + clique em Send faltando (ver abaixo). Teste pytest: `tests/pytests/test_send_file.py`. |
 | `list_unread_sessions` / `--watch-reply` | Implementada. **Não testada ao vivo.** |
-| `download_last_document` | Mesmo bug do `send_file` provavelmente também afeta este (usa o mesmo `find_window_by_title` pro diálogo "Save as…"/"Download to…") — **precisa re-testar os dois caminhos.** |
+| `download_last_document` | **Em redesign, não terminado** (ver seção própria abaixo) — implementação atual (diálogo nativo "Save as…") tem os bugs de janela aninhada e coordenada de clique já corrigidos, mas está sendo trocada por uma abordagem mais simples descoberta ao vivo. |
 | `set_contact_remark` | **Confirmado funcionando ao vivo (2026-07-21)** — Enter realmente confirma a edição do remark. Teste pytest: `tests/pytests/test_set_contact_remark.py` (2 casos, passando). |
 
 ## Bug corrigido: assumir a aba ativa
@@ -202,16 +202,105 @@ verdade e continuam achados normalmente por `find_window_by_title`.
 title_needles)` — busca em `parent_window.descendants(control_type=
 "Window")` em vez do desktop inteiro. Usado em `send_file` e
 `download_last_document` no lugar de `find_window_by_title` pros
-diálogos "Select File"/"Save as…"/"Download to…". **Não re-testado ao
-vivo ainda** — próximo passo.
+diálogos nativos "Select File"/"Save as…"/"Download to…".
 
-## Próximos passos concretos
+**`send_file`: re-testado ao vivo, confirmado funcionando** — faltava
+também um clique em "Send" depois de anexar (o WeChat só anexa, não
+manda sozinho). Teste pytest: `tests/pytests/test_send_file.py`.
 
-1. `download_last_file.py` — testar os dois caminhos ("Save as…" e
-   "Download to…"), já com o fix do diálogo nativo aninhado aplicado.
-2. `watch_reply.py`.
+**`_click_menu_item_by_prefix` (menu de contexto, botão direito na
+bolha do arquivo): continua usando `Desktop().windows()`, não o helper
+aninhado** — dump real (`ui_dump_download.txt`, clique manual)
+confirmou que esse menu (`mmui::XMenu`) É janela de nível superior de
+verdade (ao contrário dos diálogos "Select File"/"Save as…", que são
+aninhados). Cheguei a "corrigir" isso pra busca aninhada por engano
+(mesmo padrão dos diálogos) e tive que reverter — o menu de contexto
+é o caso oposto.
+
+## Bug corrigido: coordenada de clique no balão de arquivo (download_last_document)
+
+**Sintoma**: `bubble.right_click_input()` não abria menu nenhum —
+WeChat vinha pro primeiro plano (foco ok), mas nada mais acontecia,
+mesmo com o texto "Save as…" existindo de verdade no menu (confirmado
+clicando manualmente).
+
+**Causa confirmada por screenshot do usuário**: o retângulo da bolha
+reportado pelo UIA é a **linha inteira** da mensagem (976px de largura,
+quase o painel de chat todo) — bem mais largo que o balão visível de
+verdade, que fica alinhado à esquerda (~277px). O clique automático
+mirava o CENTRO desse retângulo largo, caindo em espaço vazio à
+direita do balão — não em cima de nada.
+
+**Fix**: `bubble.right_click_input(coords=(180, 40))` — mira um ponto
+fixo dentro da área visível de verdade (perto do texto do nome do
+arquivo), em vez do centro do retângulo. **Confirmado ao vivo,
+funcionando** — o menu abre certo agora.
+
+## Bug corrigido: sobrescrita silenciosa no download
+
+Depois do fix de coordenada, o "Save as…" passou a funcionar, mas
+salvar num arquivo já existente disparava o diálogo nativo "Confirm
+Save As" (Yes/No) sem tratamento. Decisão do usuário: nunca sobrescrever
+— gerar nome com sufixo tipo Windows (`arquivo (2).txt`) em vez de
+perguntar/sobrescrever. Implementado: `_unique_save_path(save_dir,
+filename)` — checa `Path.exists()` e incrementa sufixo `(2)`, `(3)`...
+até achar um nome livre, ANTES de abrir o diálogo (nunca aciona a
+confirmação de sobrescrita). Não testado ao vivo ainda (achado antes do
+redesign abaixo).
+
+## Redesign em andamento: download_last_document via pasta fixa + busca recursiva
+
+**Descoberta ao vivo (2026-07-21)**, via dump do menu de Settings
+(`ui_dump_settings.txt`): o WeChat tem duas configs relevantes —
+"Storage location" (raiz onde tudo é salvo, com botão "Change") e
+"Auto download file less than" (20 MB, com toggle) — arquivos abaixo
+desse tamanho baixam sozinhos, sem clique nenhum.
+
+Usuário trocou a "Storage location" pra uma pasta fixa própria, mas a
+estrutura interna do WeChat continua aninhada e "codificada" mesmo
+assim — não vira uma pasta plana. Estrutura real confirmada:
+`<pasta_raiz>\wxid_<id>_<sufixo opaco>\msg\file\<AAAA-MM>\<nome_arquivo>`
+(ex.: `wxid_zfvkkeyczfw222_2bc1\msg\file\2026-07\`). O sufixo depois do
+wxid não é previsível (não é só o wxid da conta) — **não vale tentar
+montar esse caminho na mão**.
+
+Usuário também descobriu um item de menu **"Download"** (diferente do
+"Download to…" que já tínhamos) que resolve o download sozinho, sem
+abrir diálogo nativo nenhum — clica e pronto, arquivo cai na estrutura
+acima automaticamente.
+
+**Plano** (ainda não implementado): trocar toda a automação de diálogo
+nativo por: clique direito na bolha (já corrigido, `coords=(180,40)`) →
+clicar no item de menu "Download" → localizar o arquivo com busca
+recursiva (`Path(storage_root).rglob(filename)`, pegar o mais recente
+por mtime) dentro da pasta de storage fixa, em vez de tentar prever o
+caminho exato. Isso substitui TODA a lógica de `_find_nested_window_by_title`
++ `_unique_save_path` + diálogo "Save as…"/"Download to…" pra esse fluxo
+(fica mais simples e robusto).
+
+**Falta antes de implementar**:
+1. Confirmar o texto EXATO do item de menu "Download" (dump do menu de
+   contexto num arquivo ainda não baixado — `ui_dump_download.txt` só
+   tem "Save as…", não "Download" simples).
+2. Decidir onde guardar o caminho da pasta de storage fixa (constante
+   em `setup_wechat.py`? campo em `.env`/`config.py`? — ainda não
+   decidido).
+3. Reescrever `download_last_document` usando o plano acima.
+4. Testar ao vivo, depois escrever o teste pytest.
+
+## Próximos passos concretos (ordem sugerida pra retomar)
+
+1. Terminar o redesign do `download_last_document` (ver seção acima) —
+   é o que estava em andamento quando a sessão parou.
+2. `watch_reply.py` — nunca testado ao vivo.
 3. `start_group.py` com 2+ nomes — bloqueado por enquanto, falta um
    segundo celular pra testar.
+4. Bug de espaço em nome/caminho passado por linha de comando: **não é
+   bug de código, é uso do cmd do Windows** — `\"` no fim de um argumento
+   entre aspas vira aspas literal dentro do valor, não fecha a string.
+   Nunca terminar um argumento quotado com `\` antes da aspas de
+   fechamento (afetou `send_file.py`/`download_last_file.py` várias
+   vezes na sessão de 2026-07-21).
 
 ## Performance — não urgente, olhar no futuro
 

@@ -1,9 +1,10 @@
 """Rotina manual: testa download_last_document contra o WeChat real.
 
 Uso:
-    python download_last_file.py "<nome>" "<pasta>"
+    python download_last_file.py "<nome>"
 
-Nome ou pasta com espaço precisa de aspas.
+Nome com espaço precisa de aspas. Pasta de storage vem do
+WECHAT_STORAGE_ROOT no .env, não é mais passada por aqui.
 """
 
 from __future__ import annotations
@@ -20,14 +21,13 @@ log = logging.getLogger("main")
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("nome")
-    parser.add_argument("pasta")
     args = parser.parse_args()
 
-    window, _config = connect()
+    window, config = connect()
 
-    log.info("Baixando arquivo mais recente de %r pra %r...", args.nome, args.pasta)
-    save_path = wechat.download_last_document(window, args.nome, args.pasta)
-    log.info("Salvo em: %s", save_path)
+    log.info("Localizando arquivo mais recente de %r...", args.nome)
+    save_path = wechat.download_last_document(window, args.nome, config.wechat_storage_root)
+    log.info("Encontrado em: %s", save_path)
 
 
 if __name__ == "__main__":

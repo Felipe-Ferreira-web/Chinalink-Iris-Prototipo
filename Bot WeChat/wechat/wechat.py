@@ -19,7 +19,6 @@ from .setup_wechat import (
     CONTACTS_TAB_TEXT,
     CURRENT_CHAT_LABEL_SUFFIX,
     DIALOG_PRIMARY_BUTTON_ID,
-    DOWNLOAD_TO_MENU_PREFIX,
     FALSE_POSITIVE_CLASS_PREFIXES,
     FILE_BUBBLE_CLASS,
     FILE_NAME_FIELD_LABEL,
@@ -30,8 +29,6 @@ from .setup_wechat import (
     MESSAGES_BUTTON_TEXT,
     NOT_DOWNLOADED_MARKER,
     REMARK_VALUE_CLASS,
-    SAVE_AS_MENU_PREFIX,
-    SAVE_DIALOG_WINDOW_TITLE,
     SELECT_FILE_WINDOW_TITLE,
     SEND_FILE_BUTTON_TEXT,
     SEND_FRIEND_REQUEST_WINDOW_TITLE,
@@ -221,26 +218,6 @@ def _click_by_text(text: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
                 return
         if time.monotonic() >= deadline:
             raise RuntimeError(f"Elemento com texto {text!r} não encontrado em nenhuma janela.")
-        time.sleep(FIND_POLL_INTERVAL_SECONDS)
-
-
-def _click_menu_item_by_prefix(text_prefix: str, timeout: float = FIND_TIMEOUT_SECONDS) -> None:
-    """Função para clicar em item de menu por prefixo."""
-    # Confirmado via dump real: esse menu (mmui::XMenu) é janela de nível
-    # superior de verdade, não aninhada na principal — Desktop().windows()
-    # é o jeito certo de achar, mesmo sendo mais lento.
-    deadline = time.monotonic() + timeout
-    while True:
-        for window in Desktop(backend="uia").windows():
-            try:
-                matches = [d for d in window.descendants() if d.window_text().startswith(text_prefix)]
-            except Exception:
-                continue
-            if matches:
-                matches[0].click_input()
-                return
-        if time.monotonic() >= deadline:
-            raise RuntimeError(f"Item de menu começando com {text_prefix!r} não encontrado.")
         time.sleep(FIND_POLL_INTERVAL_SECONDS)
 
 
@@ -522,8 +499,8 @@ def send_file(window, chat_name: str, filepath: str) -> None:
     send_button.click_input()
 
 
-def download_last_document(window, chat_name: str, save_dir: str) -> str:
-    """Função para baixar o último arquivo de uma conversa."""
+def download_last_document(window, chat_name: str, storage_root: str) -> str:
+    """Função para achar o último arquivo baixado de uma conversa."""
     open_chat(window, chat_name)
     message_list = _find_one(window, "Lista de mensagens", auto_id="chat_message_list")
 
@@ -540,36 +517,20 @@ def download_last_document(window, chat_name: str, save_dir: str) -> str:
     filename = lines[1] if len(lines) > 1 else None
     if not filename:
         raise RuntimeError(f"Não consegui ler o nome do arquivo na bolha: {bubble_text!r}")
-    not_downloaded = NOT_DOWNLOADED_MARKER in bubble_text
+    if NOT_DOWNLOADED_MARKER in bubble_text:
+        # Arquivo > 20MB (limite de "Auto download" do WeChat) não baixa
+        # sozinho — disparar o download nesse caso não está implementado.
+        raise RuntimeError(
+            f"{filename!r} ainda não foi baixado (provavelmente > 20MB) — "
+            "caso não suportado por enquanto."
+        )
 
-    _focus_window(window)
-    # Retângulo da bolha é a linha inteira (bem mais larga que o balão
-    # visível, alinhado à esquerda) — clique no centro cai em espaço vazio.
-    # Mira um ponto dentro da área visível de verdade, perto do texto.
-    bubble.right_click_input(coords=(180, 40))
-    time.sleep(5)  # diagnóstico temporário: dá tempo de ver se o menu abre
-    _click_menu_item_by_prefix(DOWNLOAD_TO_MENU_PREFIX if not_downloaded else SAVE_AS_MENU_PREFIX)
-
-    dialog = _find_nested_window_by_title(window, SAVE_DIALOG_WINDOW_TITLE)
-
-    save_path = str(Path(save_dir) / filename)
-    filename_field = _find_one(
-        dialog, "Campo de nome de arquivo", title=FILE_NAME_FIELD_LABEL, control_type="Edit"
-    )
-    _focus_window(dialog)
-    filename_field.click_input()
-    filename_field.type_keys("^a", pause=0.05)
-    _set_clipboard_text(save_path)
-    filename_field.type_keys("^v", pause=0.05)
-    _random_delay()
-
-    save_button = _find_one(
-        dialog, "Botão 'Save'", auto_id=DIALOG_PRIMARY_BUTTON_ID, control_type="Button"
-    )
-    _focus_window(dialog)
-    save_button.click_input()
-
-    return save_path
+    # Abaixo do limite de auto-download, o WeChat já salva sozinho em
+    # <storage_root>/wxid_.../msg/file/<ano-mês>/ — só localizar, sem UI.
+    matches = list(Path(storage_root).rglob(filename))
+    if not matches:
+        raise RuntimeError(f"{filename!r} não encontrado em {storage_root!r}.")
+    return str(max(matches, key=lambda p: p.stat().st_mtime))
 
 
 def read_messages(window, chat_name: str | None = None) -> list[str]:
