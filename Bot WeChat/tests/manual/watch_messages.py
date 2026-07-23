@@ -12,7 +12,6 @@ import time
 from _tests_setup import connect
 from wechat import wechat
 
-WATCH_POLL_INTERVAL_SECONDS = 5
 WATCH_DURATION_SECONDS = 5
 MAX_MESSAGES_PER_RUN = 10
 
@@ -23,7 +22,8 @@ def main() -> None:
     window, _config = connect()
 
     log.info(
-        "Vigiando todas as conversas por até %ds (máx. %d mensagens). Ctrl+C pra sair antes.",
+        "Vigiando todas as conversas por até %ds (máx. %d mensagens), "
+        "encerra antes se não houver mais pendente. Ctrl+C pra sair antes.",
         WATCH_DURATION_SECONDS,
         MAX_MESSAGES_PER_RUN,
     )
@@ -36,8 +36,7 @@ def main() -> None:
             # receber mensagem nova, enquanto processamos a pendente atual.
             pending = wechat.list_unread_sessions(window)
             if not pending:
-                time.sleep(WATCH_POLL_INTERVAL_SECONDS)
-                continue
+                break
 
             chat_name, unread_count = pending[0]
             # [N] da sidebar é a contagem de não lidas do próprio WeChat —
