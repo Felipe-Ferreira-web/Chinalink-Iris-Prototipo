@@ -219,7 +219,17 @@ sempre) no campo de nome de arquivo e clica "Open" — não navega pela
 árvore de pastas do diálogo. `auto_id='1'`/`title='File name:'` foram
 escolhidos por serem estáveis entre esse diálogo e o de salvar (ver
 seção seguinte) — o `auto_id` do campo de nome muda entre os dois
-(`1148` no de abrir, `1001` no de salvar), mas o rótulo não.
+(`1148` no de abrir, `1001` no de salvar), mas o rótulo não. Depois de
+"Open", o arquivo só fica anexado no compositor — `send_file()` ainda
+clica no botão "Send" (mesmo da mensagem de texto) pra mandar de fato.
+
+**Diálogo nativo é aninhado, não é janela de topo**: `Select File`
+(e o `Save as…`/`Download to…` do download) aparecem só como
+descendentes da janela principal na árvore UIA — `Desktop().windows()`
+nunca os encontra. `_find_nested_window_by_title()` busca dentro da
+janela principal em vez do desktop inteiro (diferente dos diálogos Qt
+do próprio WeChat — Add Contacts, Start Group Chat — que são janelas de
+topo de verdade).
 
 ## Fluxo de mensagem não lida em qualquer conversa (`list_unread_sessions`)
 
@@ -236,37 +246,44 @@ não é um badge/elemento visual separado. Confirmado no dump real:
 `list_unread_sessions()` casa a 2ª linha contra `UNREAD_MARKER_RE`
 (`^\[(\d+)\]$`) — mesmo princípio já usado pro prefixo `[File]`, só que
 aqui é um número entre colchetes. `tests/manual/watch_messages.py` usa
-isso pra vigiar a sidebar inteira em loop (em vez de um chat fixo), lê
-mensagem nova por conversa (comparando com a contagem já vista, em
-memória — sem persistir em arquivo ainda) e imprime.
+isso pra vigiar a sidebar inteira em loop (10s, a cada 5s — sem
+persistir em arquivo, começa do zero a cada execução) e **só imprime**
+o que chegou de novo (nome da conversa + texto) — não responde nada
+sozinho, decisão consciente: sem uma IA de verdade decidindo o
+conteúdo, auto-responder não faz sentido (ver `docs/STATUS.md`).
 
-## Fluxo de baixar documento recebido (`download_last_document`)
+## Fluxo de achar documento recebido (`download_last_document`)
 
-Clicar direto na bolha de arquivo já baixa **e** abre no app padrão do
-sistema (ex. Notepad) — ruim pra automação (não queremos abrir apps
-aleatórios). Em vez disso, clique com o botão direito abre um menu de
-contexto que muda conforme o estado do arquivo, confirmado ao vivo:
+Abaixo do limite de "Auto download" do WeChat (Settings > My Account,
+padrão 20 MB), o arquivo já baixa sozinho, sem clicar em nada — então
+`download_last_document()` não clica em nada, só localiza o arquivo:
 
 | Elemento | Seletor real |
 |---|---|
 | Bolha de mensagem tipo arquivo | `ListItem` classe `mmui::ChatBubbleItemView`, dentro de `chat_message_list` |
-| Texto da bolha, arquivo **não baixado** | `"File\n<nome>\n<tamanho>\nNot Downloaded\n微信电脑版"` |
+| Texto da bolha, arquivo **não baixado** (> 20MB) | `"File\n<nome>\n<tamanho>\nNot Downloaded\n微信电脑版"` |
 | Texto da bolha, **já baixado** | `"File\n<nome>\n<tamanho>"` (sem a linha `Not Downloaded`) |
-| Menu de contexto (não baixado) | item `"Download to…"` |
-| Menu de contexto (já baixado) | item `"Save as…"` |
-| Diálogo resultante | mesmo tipo nativo `#32770` do `send_file`, título contendo `"Save as"` ou `"Download to"` — campo `title='File name:'`, botão `auto_id='1'` (texto pode ser "Save" em vez de "Open", por isso o `auto_id` é o seletor usado, não o texto) |
+| Storage location (Settings > My Account) | raiz configurável (`WECHAT_STORAGE_ROOT` no `.env`) |
+| Estrutura real em disco | `<storage_root>\wxid_<id>_<sufixo opaco>\msg\file\<AAAA-MM>\<nome>` |
 
-`download_last_document()` lê o estado (`Not Downloaded` presente ou
-não) direto do texto da bolha — não precisa adivinhar qual opção vai
-aparecer no menu antes de clicar. O nome do arquivo também vem do texto
-da bolha (2ª linha), usado pra montar o caminho final dentro de
-`save_dir`.
+`download_last_document(window, chat_name, storage_root)`: lê o nome do
+arquivo na bolha (2ª linha) e, se não estiver "Not Downloaded", busca
+recursivamente (`storage_root.rglob(f"{stem}*{suffix}")` — por padrão,
+não nome exato) e devolve o mais recente por data de modificação.
+Arquivo **acima de 20MB** ("Not Downloaded") ainda não é suportado —
+levanta erro (nunca precisamos disso na prática até agora).
 
-**Não confirmado ao vivo ainda**: o diálogo específico aberto por
-"Download to…" (só testamos com "Save as…", arquivo já baixado) — o
-código assume que segue o mesmo padrão (`title='File name:'`,
-`auto_id='1'`), mas se `--test-download-last-file` falhar
-especificamente num arquivo NÃO baixado, é o primeiro lugar a conferir.
+**Pegadinhas resolvidas**:
+- O sufixo depois do `wxid` na pasta de storage é opaco/imprevisível —
+  nunca montar esse caminho na mão, sempre `rglob` na raiz toda.
+- O nome do arquivo em disco pode ter sufixo próprio do WeChat (ex.:
+  bolha mostra "arquivo.txt", arquivo real é "arquivo(2).txt" se já
+  existia um com esse nome) — por isso a busca é por padrão, não exata.
+- Trocar o "Storage location" no WeChat não achata a estrutura — ela
+  continua aninhada (`wxid.../msg/file/mês/`), só muda a raiz.
+
+`WECHAT_STORAGE_ROOT` é **específico de máquina/conta** — reconfirmar
+se migrar de servidor Windows, de conta WeChat, ou for pra produção.
 
 ## Histórico: integração com o server Django (Busca de Suppliers)
 
@@ -292,9 +309,16 @@ copy .env.example .env
 
 Preencha `.env` com um `TARGET_CHAT_NAME` seguro para teste (ex.: `File
 Transfer` / `文件传输助手` — conversa de notas pessoais do próprio WeChat,
-não um contato real).
+não um contato real). Preencha também `WECHAT_STORAGE_ROOT` com o valor
+de Settings > My Account > Storage location do WeChat — **específico de
+máquina/conta**, reconfirmar se migrar de servidor ou de conta.
 
 ## Uso
+
+Nome/caminho com espaço precisa de aspas (senão o Windows quebra em
+argumentos separados) — nunca terminar um argumento quotado com `\`
+antes da aspas de fechamento (`\"` vira aspas literal, não fecha a
+string).
 
 ```powershell
 python ui_mapping/inspect_ui.py                          # dump da janela principal em ui_mapping/dumps/ — sem clicar em nada
@@ -317,17 +341,17 @@ python tests/manual/set_remark.py <nome> <apelido>           # testa set_contact
 
 ## Pendências
 
-Testar ponta a ponta contra o WeChat real (implementado, seletores
-confirmados via dump, mas sem execução completa confirmada ainda):
-- [ ] `tests/manual/add_contact.py` (`add_contact_by_phone`).
-- [ ] `tests/manual/start_chat.py` (`find_or_start_chat`).
-- [ ] `tests/manual/start_group.py` com 2+ nomes (`start_group_chat` —
-      só testado até agora com 1 nome, que confirmou não formar grupo).
-- [ ] `tests/manual/send_file.py` (`send_file`).
-- [ ] `tests/manual/watch_messages.py` (`list_unread_sessions`).
-- [ ] `tests/manual/download_last_file.py` (`download_last_document` —
-      só cobre arquivo já baixado; arquivo >20MB ("Not Downloaded")
-      ainda não é suportado).
+**Confirmadas funcionando ao vivo, com teste pytest** (ver
+`docs/STATUS.md` pro histórico/detalhes de cada uma):
+`add_contact_by_phone`, `find_or_start_chat`, `send_file`,
+`set_contact_remark`, `download_last_document` (só arquivo ≤20MB).
+
+**Ainda não confirmado ao vivo**:
+- [ ] `tests/manual/watch_messages.py` (`list_unread_sessions`) — código
+      pronto, nunca rodado contra o WeChat real ainda.
+- [ ] `tests/manual/start_group.py` com **2+ nomes** (`start_group_chat`
+      — só testado com 1 nome, que corretamente não formou grupo).
+      Bloqueado: precisa de um segundo celular disponível pra testar.
 
 Outros itens, sem prazo definido:
 - [ ] Confirmar se a automação também cobre WeCom (cliente corporativo)

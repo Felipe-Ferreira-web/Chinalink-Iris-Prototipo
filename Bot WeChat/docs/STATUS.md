@@ -1,9 +1,29 @@
-# Status — Bot WeChat (2026-07-20)
+# Status — Bot WeChat (atualizado 2026-07-22)
 
 Registro do que foi feito, decidido e descoberto, pra continuar depois
 sem perder contexto. Não substitui o `README.md` (seletores/fluxos
 confirmados) — aqui é o resumo de sessão: o que mudou, o que falta, e
 por quê.
+
+## Resumo rápido (leia isto primeiro)
+
+**Confirmado funcionando ao vivo, com pytest**: `add_contact_by_phone`,
+`find_or_start_chat`, `send_message`/`read_messages`/`open_chat`/
+`list_sessions`, `send_file`, `set_contact_remark`,
+`download_last_document` (só arquivo ≤20MB — ver tabela abaixo).
+
+**Próximo passo concreto**: testar `tests/manual/watch_messages.py` ao
+vivo (nunca rodado contra o WeChat real) — ver seção própria mais
+abaixo pro que já foi corrigido só olhando o código (contagem inicial,
+timeout de 10s) sem confirmação ao vivo ainda.
+
+**Bloqueado, não é bug**: `start_group.py` com 2+ nomes — falta um
+segundo celular disponível pra testar.
+
+**Antes de mexer em `download_last_document`/`send_file`**: leia
+"Redesign concluído" e "Bug corrigido: diálogo nativo não encontrado"
+mais abaixo — tem 2 pegadinhas de UIA (diálogo nativo aninhado vs. menu
+de contexto que é janela de topo) fáceis de reverter por engano.
 
 ## Contexto de ambiente (sempre válido)
 
@@ -321,11 +341,27 @@ detecção de mensagem nova funciona.
 **Mudança**: renomeado `watch_reply.py` → `watch_messages.py`, removido
 `wechat.send_message` e o argumento `texto`. Agora só imprime (via log,
 que já tem horário): número sequencial da notificação, nome da conversa
-e o texto da mensagem nova. **Ainda não testado ao vivo.**
+e o texto da mensagem nova.
+
+**Testado ao vivo uma vez, 2 bugs achados e corrigidos** (2026-07-22):
+1. **Contagem errada** (achou 3 notificações mandando só 1 mensagem):
+   na 1ª vez que uma conversa aparece como não lida, o código tratava
+   TODO o histórico já carregado como "novo" (`seen_counts` começava
+   vazio pra ela). Fix: 1ª vez que vê uma conversa só grava a contagem
+   atual como base, sem notificar nada — só o que chegar DEPOIS conta.
+2. **Sem timeout**: rodava pra sempre, só saía com Ctrl+C, e re-focava
+   o WeChat a cada ciclo de 5s (clique na aba Weixin de propósito, ver
+   "Bug corrigido: assumir a aba ativa" — não é bug, mas incomoda num
+   loop longo). Fix: `WATCH_DURATION_SECONDS = 10` — para sozinho depois
+   de 10s. Resolve o incômodo do refoco na prática (só 1-2 ciclos por
+   execução) sem mexer em `_switch_to_tab` (usado por todo o resto).
+
+**Ainda não re-testado ao vivo** depois desses 2 fixes — próximo passo.
 
 ## Próximos passos concretos (ordem sugerida pra retomar)
 
-1. `watch_messages.py` — nunca testado ao vivo.
+1. Re-testar `watch_messages.py` ao vivo com os 2 fixes acima, depois
+   escrever o teste pytest.
 2. `start_group.py` com 2+ nomes — bloqueado por enquanto, falta um
    segundo celular pra testar.
 3. Bug de espaço em nome/caminho passado por linha de comando: **não é
@@ -350,4 +386,5 @@ cada chamada realmente leva nesse servidor — sem esse dado, ajustar
 - `docs/README.md` — tabelas de seletores confirmados.
 - Memória entre sessões (Claude Code): `feedback_wechat_ensure_tab_before_acting`,
   `feedback_pywinauto_focus_before_click`, `feedback_docstrings_comments_max_10_words`,
-  `project_bot_wechat_decoupled_from_suppliers`, `project_wecom_windows_wxauto4_abandoned`.
+  `feedback_push_back_when_unclear`, `project_bot_wechat_decoupled_from_suppliers`,
+  `project_wecom_windows_wxauto4_abandoned`.
