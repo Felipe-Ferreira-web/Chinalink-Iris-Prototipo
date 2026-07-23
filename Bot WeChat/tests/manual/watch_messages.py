@@ -13,7 +13,8 @@ from _tests_setup import connect
 from wechat import wechat
 
 WATCH_POLL_INTERVAL_SECONDS = 5
-WATCH_DURATION_SECONDS = 10
+WATCH_DURATION_SECONDS = 5
+MAX_MESSAGES_PER_RUN = 10
 
 log = logging.getLogger("main")
 
@@ -22,31 +23,39 @@ def main() -> None:
     window, _config = connect()
 
     log.info(
-        "Vigiando todas as conversas por %ds (a cada %ds). Ctrl+C pra sair antes.",
+        "Vigiando todas as conversas por até %ds (máx. %d mensagens). Ctrl+C pra sair antes.",
         WATCH_DURATION_SECONDS,
-        WATCH_POLL_INTERVAL_SECONDS,
+        MAX_MESSAGES_PER_RUN,
     )
-    seen_counts: dict[str, int] = {}
     notification_count = 0
     deadline = time.monotonic() + WATCH_DURATION_SECONDS
     try:
-        while time.monotonic() < deadline:
-            for chat_name in wechat.list_unread_sessions(window):
-                messages = wechat.read_messages(window, chat_name)
-                if chat_name not in seen_counts:
-                    # 1ª vez vendo essa conversa: só grava a base, não notifica
-                    # o histórico inteiro como se fosse tudo mensagem nova.
-                    seen_counts[chat_name] = len(messages)
-                    continue
-                seen = seen_counts[chat_name]
-                new_messages = messages[seen:]
-                seen_counts[chat_name] = len(messages)
-                for text in new_messages:
-                    notification_count += 1
-                    log.info("[%d] %s: %r", notification_count, chat_name, text)
-            time.sleep(WATCH_POLL_INTERVAL_SECONDS)
+        while time.monotonic() < deadline and notification_count < MAX_MESSAGES_PER_RUN:
+            # Reconsulta a cada passo (nunca guarda a lista toda de uma vez):
+            # uma nova notificação pode chegar, ou a mesma conversa pode
+            # receber mensagem nova, enquanto processamos a pendente atual.
+            pending = wechat.list_unread_sessions(window)
+            if not pending:
+                time.sleep(WATCH_POLL_INTERVAL_SECONDS)
+                continue
+
+            chat_name, unread_count = pending[0]
+            # [N] da sidebar é a contagem de não lidas do próprio WeChat —
+            # fonte de verdade, não depende de estado local em memória.
+            messages = wechat.read_messages(window, chat_name)
+            new_messages = messages[-unread_count:] if unread_count else []
+            for text in new_messages:
+                notification_count += 1
+                log.info("[%d] %s: %r", notification_count, chat_name, text)
+                if notification_count >= MAX_MESSAGES_PER_RUN:
+                    break
     except KeyboardInterrupt:
         pass
+    if notification_count >= MAX_MESSAGES_PER_RUN:
+        log.warning(
+            "Limite de %d mensagens atingido, encerrando cedo (pode haver mais pendente).",
+            MAX_MESSAGES_PER_RUN,
+        )
     log.info("Encerrando. Total de notificações: %d.", notification_count)
 
 

@@ -156,19 +156,22 @@ def list_sessions(window) -> list[str]:
     return names
 
 
-def list_unread_sessions(window) -> list[str]:
-    """Função para listar conversas com mensagem não lida."""
+def list_unread_sessions(window) -> list[tuple[str, int]]:
+    """Lista (nome, qtd. não lida) das conversas com mensagem não lida."""
     _switch_to_tab(window, WEIXIN_TAB_TEXT)
     session_list = _find_one(window, "Lista de conversas", auto_id="session_list")
-    names = []
+    sessions = []
     for item in session_list.children(control_type="ListItem"):
         auto_id = item.element_info.automation_id
         if not auto_id.startswith(SESSION_ITEM_PREFIX):
             continue
         lines = item.window_text().split("\n")
-        if len(lines) > 1 and UNREAD_MARKER_RE.match(lines[1]):
-            names.append(auto_id[len(SESSION_ITEM_PREFIX):])
-    return names
+        if len(lines) <= 1:
+            continue
+        match = UNREAD_MARKER_RE.match(lines[1])
+        if match:
+            sessions.append((auto_id[len(SESSION_ITEM_PREFIX):], int(match.group(1))))
+    return sessions
 
 
 def get_current_chat_name(window) -> str | None:
