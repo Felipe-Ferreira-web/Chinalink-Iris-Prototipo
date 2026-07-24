@@ -24,7 +24,12 @@ from .setup_wechat import (
     FILE_NAME_FIELD_LABEL,
     FIND_POLL_INTERVAL_SECONDS,
     FIND_TIMEOUT_SECONDS,
+    GROUP_CANCEL_BTN_ID,
+    GROUP_CANDIDATES_VIEW_CLASSES,
+    GROUP_CONFIRM_BTN_ID,
     GROUP_CONTACT_ROW_CLASS,
+    GROUP_DETAIL_VIEW_CLASS,
+    GROUP_DIALOG_WRAPPER_CLASS,
     GROUP_SEARCH_RESULT_ROW_CLASS,
     MESSAGE_TEXT_CLASS,
     MESSAGES_BUTTON_TEXT,
@@ -132,6 +137,30 @@ def _find_one(
             raise RuntimeError(
                 f"{error_label} não encontrado após {timeout}s (auto_id={auto_id!r}, {kwargs})."
             )
+        time.sleep(FIND_POLL_INTERVAL_SECONDS)
+
+
+def _find_direct_child_by_auto_id(window, error_label: str, auto_id: str, timeout: float = FIND_TIMEOUT_SECONDS):
+    """Acha filho direto por auto_id, sem descer na árvore (evita ciclo UIA)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        for child in window.children():
+            if child.element_info.automation_id == auto_id:
+                return child
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"{error_label} não encontrado após {timeout}s (auto_id={auto_id!r}).")
+        time.sleep(FIND_POLL_INTERVAL_SECONDS)
+
+
+def _find_direct_child_by_class(window, error_label: str, class_names: tuple[str, ...], timeout: float = FIND_TIMEOUT_SECONDS):
+    """Acha filho direto por classe, sem descer na árvore (evita ciclo UIA)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        for child in window.children():
+            if child.element_info.class_name in class_names:
+                return child
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"{error_label} não encontrado após {timeout}s (class_names={class_names!r}).")
         time.sleep(FIND_POLL_INTERVAL_SECONDS)
 
 
@@ -408,7 +437,10 @@ def open_start_group_chat_dialog(main_window):
 
 def start_group_chat(main_window, contact_names: list[str]) -> str | None:
     """Função para criar um grupo com os contatos informados."""
+    # sp_choice_contact_list cicla na árvore UIA com 1+ selecionado (bug do WeChat) — só children().
     dialog = open_start_group_chat_dialog(main_window)
+    wrapper = _find_direct_child_by_class(dialog, "Wrapper do diálogo", (GROUP_DIALOG_WRAPPER_CLASS,))
+    detail_view = _find_direct_child_by_class(wrapper, "Painel de detalhe do grupo", (GROUP_DETAIL_VIEW_CLASS,))
 
     search_field = _find_one(dialog, "Campo de busca de contatos", control_type="Edit")
 
@@ -420,22 +452,21 @@ def start_group_chat(main_window, contact_names: list[str]) -> str | None:
         search_field.type_keys("^v", pause=0.05)
         _random_delay()
 
-        # Busca filtra pra um container diferente (SearchContactCellView).
+        # Re-resolve a lista a cada nome — busca troca o container (SPMasterView -> SearchContactNewChatView).
+        picker_view = _find_direct_child_by_class(wrapper, "Lista de candidatos", GROUP_CANDIDATES_VIEW_CLASSES)
         matches = [
-            m for m in dialog.descendants(title=name, control_type="CheckBox")
+            m for m in picker_view.descendants(title=name, control_type="CheckBox")
             if m.element_info.class_name in (GROUP_CONTACT_ROW_CLASS, GROUP_SEARCH_RESULT_ROW_CLASS)
         ]
         if not matches:
-            cancel_button = _find_one(
-                dialog, "Botão 'Cancel'", title="Cancel", control_type="Button"
-            )
+            cancel_button = _find_direct_child_by_auto_id(detail_view, "Botão 'Cancel'", GROUP_CANCEL_BTN_ID)
             _focus_window(dialog)
             cancel_button.click_input()
             return None
         _focus_window(dialog)
         matches[0].click_input()
 
-    finish_button = _find_one(dialog, "Botão 'Finish'", title="Finish", control_type="Button")
+    finish_button = _find_direct_child_by_auto_id(detail_view, "Botão 'Finish'", GROUP_CONFIRM_BTN_ID)
     _focus_window(dialog)
     finish_button.click_input()
 
