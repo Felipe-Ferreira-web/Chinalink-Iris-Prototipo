@@ -3,12 +3,9 @@
 
 from __future__ import annotations
 
-import logging
 import random
 import time
 from pathlib import Path
-
-log = logging.getLogger("main")
 
 import win32clipboard
 import win32con
@@ -223,11 +220,14 @@ def list_unread_sessions(window) -> list[tuple[str, int]]:
     return sessions
 
 
-def get_current_chat_name(window) -> str | None:
-    """Função para pegar o nome da conversa aberta."""
-    for item in window.descendants(control_type="Text"):
-        if item.element_info.automation_id.endswith(CURRENT_CHAT_LABEL_SUFFIX):
-            return item.window_text()
+def get_current_chat_name(window, retries: int = 5) -> str | None:
+    """Função para pegar o nome da conversa aberta (poucas tentativas, não tempo)."""
+    for attempt in range(retries):
+        for item in window.descendants(control_type="Text"):
+            if item.element_info.automation_id.endswith(CURRENT_CHAT_LABEL_SUFFIX):
+                return item.window_text()
+        if attempt < retries - 1:
+            time.sleep(FIND_POLL_INTERVAL_SECONDS)
     return None
 
 
@@ -471,25 +471,18 @@ def start_group_chat(main_window, contact_names: list[str]) -> str | None:
         search_field.type_keys("^v", pause=0.05)
         _random_delay()
 
-        log.info("DEBUG start_group: buscando candidato %r", name)
         candidate = _find_group_candidate(wrapper, name)
-        log.info("DEBUG start_group: candidato %r -> %r", name, candidate)
         if candidate is None:
-            log.info("DEBUG start_group: candidato %r não achado, clicando Cancel", name)
             cancel_button = _find_direct_child_by_auto_id(detail_view, "Botão 'Cancel'", GROUP_CANCEL_BTN_ID)
             _focus_window(dialog)
             cancel_button.click_input()
-            log.info("DEBUG start_group: Cancel clicado, retornando None")
             return None
         _focus_window(dialog)
         candidate.click_input()
-        log.info("DEBUG start_group: candidato %r clicado", name)
 
-    log.info("DEBUG start_group: todos os nomes processados, clicando Finish")
     finish_button = _find_direct_child_by_auto_id(detail_view, "Botão 'Finish'", GROUP_CONFIRM_BTN_ID)
     _focus_window(dialog)
     finish_button.click_input()
-    log.info("DEBUG start_group: Finish clicado")
 
     return get_current_chat_name(main_window)
 
