@@ -164,6 +164,22 @@ def _find_direct_child_by_class(window, error_label: str, class_names: tuple[str
         time.sleep(FIND_POLL_INTERVAL_SECONDS)
 
 
+def _find_group_candidate(wrapper, name: str, timeout: float = FIND_TIMEOUT_SECONDS):
+    """Espera a lista filtrada renderizar e acha o CheckBox do contato."""
+    deadline = time.monotonic() + timeout
+    while True:
+        picker_view = _find_direct_child_by_class(wrapper, "Lista de candidatos", GROUP_CANDIDATES_VIEW_CLASSES)
+        matches = [
+            m for m in picker_view.descendants(title=name, control_type="CheckBox")
+            if m.element_info.class_name in (GROUP_CONTACT_ROW_CLASS, GROUP_SEARCH_RESULT_ROW_CLASS)
+        ]
+        if matches:
+            return matches[0]
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(FIND_POLL_INTERVAL_SECONDS)
+
+
 def _set_clipboard_text(text: str) -> None:
     """Função para colocar um texto na área de transferência."""
     win32clipboard.OpenClipboard()
@@ -437,8 +453,8 @@ def open_start_group_chat_dialog(main_window):
 
 def start_group_chat(main_window, contact_names: list[str]) -> str | None:
     """Função para criar um grupo com os contatos informados."""
-    # sp_choice_contact_list cicla na árvore UIA com 1+ selecionado (bug do WeChat) — só children().
     dialog = open_start_group_chat_dialog(main_window)
+    # children() só — sp_choice_contact_list cicla na árvore UIA com 1+ selecionado (bug do WeChat).
     wrapper = _find_direct_child_by_class(dialog, "Wrapper do diálogo", (GROUP_DIALOG_WRAPPER_CLASS,))
     detail_view = _find_direct_child_by_class(wrapper, "Painel de detalhe do grupo", (GROUP_DETAIL_VIEW_CLASS,))
 
@@ -452,19 +468,14 @@ def start_group_chat(main_window, contact_names: list[str]) -> str | None:
         search_field.type_keys("^v", pause=0.05)
         _random_delay()
 
-        # Re-resolve a lista a cada nome — busca troca o container (SPMasterView -> SearchContactNewChatView).
-        picker_view = _find_direct_child_by_class(wrapper, "Lista de candidatos", GROUP_CANDIDATES_VIEW_CLASSES)
-        matches = [
-            m for m in picker_view.descendants(title=name, control_type="CheckBox")
-            if m.element_info.class_name in (GROUP_CONTACT_ROW_CLASS, GROUP_SEARCH_RESULT_ROW_CLASS)
-        ]
-        if not matches:
+        candidate = _find_group_candidate(wrapper, name)
+        if candidate is None:
             cancel_button = _find_direct_child_by_auto_id(detail_view, "Botão 'Cancel'", GROUP_CANCEL_BTN_ID)
             _focus_window(dialog)
             cancel_button.click_input()
             return None
         _focus_window(dialog)
-        matches[0].click_input()
+        candidate.click_input()
 
     finish_button = _find_direct_child_by_auto_id(detail_view, "Botão 'Finish'", GROUP_CONFIRM_BTN_ID)
     _focus_window(dialog)
