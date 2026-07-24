@@ -401,7 +401,8 @@ def open_start_group_chat_dialog(main_window):
     _focus_window(main_window)
     shortcuts_button.click_input()
     _click_by_text(START_GROUP_CHAT_MENU_TEXT)
-    return find_window_by_title(START_GROUP_CHAT_WINDOW_TITLE)
+    # Diálogo é aninhado na janela principal, não janela de topo (dump real).
+    return _find_nested_window_by_title(main_window, START_GROUP_CHAT_WINDOW_TITLE)
 
 
 def start_group_chat(main_window, contact_names: list[str]) -> str | None:
