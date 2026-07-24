@@ -17,21 +17,15 @@ def _get(name: str, default: str = "") -> str:
 
 @dataclass(frozen=True)
 class Config:
-    target_chat_name: str
     test_message: str
-    listen_duration_seconds: float
-    log_level: str
-    test_phone: str
+    debug: bool
     wechat_storage_root: str
 
 
 def load_config() -> Config:
-    config = Config(
-        target_chat_name=_get("TARGET_CHAT_NAME", "File Transfer"),
+    return Config(
         test_message=_get("TEST_MESSAGE", "teste automação"),
-        listen_duration_seconds=float(_get("LISTEN_DURATION_SECONDS", "30")),
-        log_level=_get("LOG_LEVEL", "INFO").upper(),
-        test_phone=_get("TEST_PHONE", ""),
+        debug=_get("DEBUG", "FALSE").upper() == "TRUE",
         # Específico de máquina/conta — reconfirmar (Settings > Storage
         # location no WeChat) se trocar de servidor ou for pra produção.
         wechat_storage_root=_get(
@@ -39,16 +33,27 @@ def load_config() -> Config:
             r"C:\Users\fsantos\Documents\xwechat_files",
         ),
     )
-    if not config.target_chat_name:
-        raise RuntimeError(
-            "TARGET_CHAT_NAME não definido. Copie .env.example para .env e preencha."
-        )
-    return config
 
 
-def setup_logging(level: str) -> None:
-    logging.basicConfig(
-        level=getattr(logging, level, logging.INFO),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
+class _ColorFormatter(logging.Formatter):
+    """Colore a linha pelo nível: INFO neutro, WARNING amarelo, ERROR+ vermelho."""
+
+    _COLORS = {
+        logging.WARNING: "\033[33m",
+        logging.ERROR: "\033[31m",
+        logging.CRITICAL: "\033[31m",
+    }
+    _RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        line = super().format(record)
+        color = self._COLORS.get(record.levelno)
+        return f"{color}{line}{self._RESET}" if color else line
+
+
+def setup_logging(debug: bool) -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        _ColorFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S")
     )
+    logging.basicConfig(level=logging.INFO if debug else logging.WARNING, handlers=[handler])

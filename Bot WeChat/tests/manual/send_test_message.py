@@ -1,7 +1,7 @@
 """Rotina manual: manda uma mensagem de teste pra uma conversa.
 
 Uso:
-    python send_test_message.py
+    python send_test_message.py <nome>
     python send_test_message.py <nome> "texto"
 """
 
@@ -18,12 +18,12 @@ log = logging.getLogger("main")
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("nome", nargs="?", default=None)
+    parser.add_argument("nome")
     parser.add_argument("texto", nargs="?", default=None)
     args = parser.parse_args()
 
     window, config = connect()
-    chat_name = args.nome if args.nome is not None else config.target_chat_name
+    chat_name = args.nome
     text = args.texto if args.texto is not None else config.test_message
 
     log.info("Enviando mensagem de teste para %s: %r", chat_name, text)

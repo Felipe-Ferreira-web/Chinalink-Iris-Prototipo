@@ -1,7 +1,6 @@
 """Rotina manual: lê a última mensagem de uma conversa e reenvia ela mesma.
 
 Uso:
-    python echo_last.py
     python echo_last.py <nome>
 """
 
@@ -18,11 +17,11 @@ log = logging.getLogger("main")
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("nome", nargs="?", default=None)
+    parser.add_argument("nome")
     args = parser.parse_args()
 
-    window, config = connect()
-    chat_name = args.nome if args.nome is not None else config.target_chat_name
+    window, _config = connect()
+    chat_name = args.nome
 
     messages = wechat.read_messages(window, chat_name)
     if not messages:

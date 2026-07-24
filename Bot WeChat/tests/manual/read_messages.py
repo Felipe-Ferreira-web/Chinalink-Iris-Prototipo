@@ -1,7 +1,6 @@
 """Rotina manual: lê e imprime as mensagens de uma conversa.
 
 Uso:
-    python read_messages.py
     python read_messages.py <nome>
 """
 
@@ -18,11 +17,11 @@ log = logging.getLogger("main")
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("nome", nargs="?", default=None)
+    parser.add_argument("nome")
     args = parser.parse_args()
 
-    window, config = connect()
-    chat_name = args.nome if args.nome is not None else config.target_chat_name
+    window, _config = connect()
+    chat_name = args.nome
 
     log.info("Lendo mensagens de '%s'...", chat_name)
     messages = wechat.read_messages(window, chat_name)

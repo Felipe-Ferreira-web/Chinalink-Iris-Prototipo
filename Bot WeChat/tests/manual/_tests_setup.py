@@ -16,7 +16,7 @@ log = logging.getLogger("main")
 
 def connect():
     config = load_config()
-    setup_logging(config.log_level)
+    setup_logging(config.debug)
     log.info("Procurando janela do WeChat...")
     window = wechat.find_wechat_window()
     log.info("Conectado: %r", window.window_text())

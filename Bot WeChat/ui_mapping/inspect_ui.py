@@ -107,7 +107,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     config = load_config()
-    setup_logging(config.log_level)
+    setup_logging(config.debug)
 
     if args.title:
         title_needles = (args.title,)
