@@ -245,10 +245,19 @@ não é um badge/elemento visual separado. Confirmado no dump real:
 
 `list_unread_sessions()` casa a 2ª linha contra `UNREAD_MARKER_RE`
 (`^\[(\d+)\]$`) — mesmo princípio já usado pro prefixo `[File]`, só que
-aqui é um número entre colchetes. `tests/manual/watch_messages.py` usa
-isso pra vigiar a sidebar inteira em loop (10s, a cada 5s — sem
-persistir em arquivo, começa do zero a cada execução) e **só imprime**
-o que chegou de novo (nome da conversa + texto) — não responde nada
+aqui é um número entre colchetes. Retorna `list[tuple[str, int]]`
+(nome, contagem não lida) — o número já vem direto do WeChat, não
+depende de estado local guardado entre execuções.
+
+`tests/manual/watch_messages.py` usa isso pra vigiar a sidebar: a cada
+passo, reconsulta `list_unread_sessions()` do zero (nunca processa uma
+lista congelada — cobre tanto notificação nova chegando durante o
+processamento quanto a mesma conversa recebendo mensagem entre passos),
+pega a 1ª pendente, abre e lê só as últimas `N` mensagens (`N` = contagem
+da sidebar). Encerra assim que não sobrar pendente, ou ao bater
+`WATCH_DURATION_SECONDS`/`MAX_MESSAGES_PER_RUN` (o que vier primeiro —
+evita que uma conversa muito ativa monopolize o loop). **Só imprime** o
+que chegou de novo (nome da conversa + texto) — não responde nada
 sozinho, decisão consciente: sem uma IA de verdade decidindo o
 conteúdo, auto-responder não faz sentido (ver `docs/STATUS.md`).
 
@@ -344,11 +353,10 @@ python tests/manual/set_remark.py <nome> <apelido>           # testa set_contact
 **Confirmadas funcionando ao vivo, com teste pytest** (ver
 `docs/STATUS.md` pro histórico/detalhes de cada uma):
 `add_contact_by_phone`, `find_or_start_chat`, `send_file`,
-`set_contact_remark`, `download_last_document` (só arquivo ≤20MB).
+`set_contact_remark`, `download_last_document` (só arquivo ≤20MB),
+`list_unread_sessions`/`watch_messages.py`.
 
 **Ainda não confirmado ao vivo**:
-- [ ] `tests/manual/watch_messages.py` (`list_unread_sessions`) — código
-      pronto, nunca rodado contra o WeChat real ainda.
 - [ ] `tests/manual/start_group.py` com **2+ nomes** (`start_group_chat`
       — só testado com 1 nome, que corretamente não formou grupo).
       Bloqueado: precisa de um segundo celular disponível pra testar.

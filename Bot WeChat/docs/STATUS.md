@@ -1,4 +1,4 @@
-# Status — Bot WeChat (atualizado 2026-07-22)
+# Status — Bot WeChat (atualizado 2026-07-23)
 
 Registro do que foi feito, decidido e descoberto, pra continuar depois
 sem perder contexto. Não substitui o `README.md` (seletores/fluxos
@@ -10,15 +10,12 @@ por quê.
 **Confirmado funcionando ao vivo, com pytest**: `add_contact_by_phone`,
 `find_or_start_chat`, `send_message`/`read_messages`/`open_chat`/
 `list_sessions`, `send_file`, `set_contact_remark`,
-`download_last_document` (só arquivo ≤20MB — ver tabela abaixo).
+`download_last_document` (só arquivo ≤20MB — ver tabela abaixo),
+`list_unread_sessions`/`watch_messages.py` (redesign completo, ver seção
+própria abaixo).
 
-**Próximo passo concreto**: testar `tests/manual/watch_messages.py` ao
-vivo (nunca rodado contra o WeChat real) — ver seção própria mais
-abaixo pro que já foi corrigido só olhando o código (contagem inicial,
-timeout de 10s) sem confirmação ao vivo ainda.
-
-**Bloqueado, não é bug**: `start_group.py` com 2+ nomes — falta um
-segundo celular disponível pra testar.
+**Próximo passo concreto**: `start_group.py` com 2+ nomes — falta um
+segundo celular disponível pra testar (único item bloqueado, não é bug).
 
 **Antes de mexer em `download_last_document`/`send_file`**: leia
 "Redesign concluído" e "Bug corrigido: diálogo nativo não encontrado"
@@ -63,7 +60,7 @@ não importa de onde for chamado.
 | `send_message`/`read_messages`/`open_chat`/`list_sessions` | Confirmadas funcionando ao vivo em sessão anterior. Sem teste pytest ainda. |
 | `start_group_chat` | Implementada, testada só com 1 nome (WeChat abre conversa individual, não forma grupo — esperado). **Não testada com 2+ nomes** — bug de parâmetro com espaço em investigação (ver abaixo). |
 | `send_file` | **Confirmado funcionando ao vivo (2026-07-21)**, depois de 2 fixes: diálogo nativo aninhado + clique em Send faltando (ver abaixo). Teste pytest: `tests/pytests/test_send_file.py`. |
-| `list_unread_sessions` / `watch_messages.py` | Implementada. **Não testada ao vivo.** Só detecta e imprime (não responde mais — ver seção própria abaixo). |
+| `list_unread_sessions` / `watch_messages.py` | **Confirmado funcionando ao vivo (2026-07-23)**, depois do redesign completo (ver seção própria abaixo). Só detecta e imprime (não responde mais). Teste pytest: `tests/pytests/test_watch_messages.py` (5 casos, passando). |
 | `download_last_document` | **Confirmado funcionando ao vivo (2026-07-22)**, com a abordagem nova (ver seção própria abaixo) — sem clique, busca recursiva na pasta de storage. Teste pytest: `tests/pytests/test_download_last_document.py` (3 casos). |
 | `set_contact_remark` | **Confirmado funcionando ao vivo (2026-07-21)** — Enter realmente confirma a edição do remark. Teste pytest: `tests/pytests/test_set_contact_remark.py` (2 casos, passando). |
 
@@ -338,38 +335,92 @@ conteúdo — isso só vai fazer sentido quando existir uma IA real
 decidindo a resposta. Até lá, o script só serve pra confirmar que a
 detecção de mensagem nova funciona.
 
-**Mudança**: renomeado `watch_reply.py` → `watch_messages.py`, removido
-`wechat.send_message` e o argumento `texto`. Agora só imprime (via log,
-que já tem horário): número sequencial da notificação, nome da conversa
-e o texto da mensagem nova.
+**Mudança inicial**: renomeado `watch_reply.py` → `watch_messages.py`,
+removido `wechat.send_message` e o argumento `texto`. Só imprime (via
+log, que já tem horário): número sequencial da notificação, nome da
+conversa e o texto da mensagem nova.
 
-**Testado ao vivo uma vez, 2 bugs achados e corrigidos** (2026-07-22):
-1. **Contagem errada** (achou 3 notificações mandando só 1 mensagem):
-   na 1ª vez que uma conversa aparece como não lida, o código tratava
-   TODO o histórico já carregado como "novo" (`seen_counts` começava
-   vazio pra ela). Fix: 1ª vez que vê uma conversa só grava a contagem
-   atual como base, sem notificar nada — só o que chegar DEPOIS conta.
-2. **Sem timeout**: rodava pra sempre, só saía com Ctrl+C, e re-focava
-   o WeChat a cada ciclo de 5s (clique na aba Weixin de propósito, ver
-   "Bug corrigido: assumir a aba ativa" — não é bug, mas incomoda num
-   loop longo). Fix: `WATCH_DURATION_SECONDS = 10` — para sozinho depois
-   de 10s. Resolve o incômodo do refoco na prática (só 1-2 ciclos por
-   execução) sem mexer em `_switch_to_tab` (usado por todo o resto).
+**Primeiro teste ao vivo (2026-07-22), 2 bugs achados e corrigidos**:
+contagem errada na 1ª vez que uma conversa aparecia como não lida
+(tratava todo o histórico como novo) e falta de timeout (rodava pra
+sempre, só saía com Ctrl+C). Fixes de então: `seen_counts` como base na
+1ª visão, `WATCH_DURATION_SECONDS = 10`.
 
-**Ainda não re-testado ao vivo** depois desses 2 fixes — próximo passo.
+## Redesign completo (2026-07-23): `[N]` da sidebar + fim de `seen_counts`
+
+**Motivo** (usuário, ao usar o script pela 1ª vez após os fixes de
+2026-07-22): o script continuava com comportamento estranho — mesmo
+depois de ler as notificações pendentes, ficava rodando até o timeout
+em vez de encerrar. Diagnosticado: `read_messages()` já chama
+`open_chat()` internamente, então cada conversa não-lida já abria de
+verdade — só que o loop continuava reabrindo/fechando abas até o
+timeout global, mesmo sem nada novo pra processar.
+
+**Discussão sobre concorrência** (usuário levantou 2 problemas reais):
+1. Nova notificação pode chegar enquanto processamos a lista atual.
+2. A mesma conversa pode receber mensagem nova entre montar a lista e
+   efetivamente ler ela (lista "congelada" fica desatualizada).
+
+**Decisão de design**: nunca guardar a lista de pendentes de uma vez —
+reconsultar `list_unread_sessions()` a cada passo do loop, pegar só a
+1ª pendente, processar (abre+lê, que já É a leitura real no momento em
+que acontece), e voltar a consultar do zero. Cobre os dois problemas
+sem precisar de lock nem timestamp.
+
+**Risco de starvation identificado pelo usuário**: sem limite, uma
+conversa muito ativa (ou várias) poderia monopolizar o loop pra sempre,
+atrasando o resto do sistema. Fix: dois limites independentes, sai ao
+bater qualquer um dos dois — `WATCH_DURATION_SECONDS` (tempo) e
+`MAX_MESSAGES_PER_RUN = 10` (teto de mensagens por execução). O que
+sobrar fica pendente pra próxima chamada do script (`[N]` da sidebar
+não é resetado por quem não abriu a conversa).
+
+**Melhoria adicional** (ideia do usuário): em vez de `seen_counts`
+(dict em memória, contagem da última vez que o script viu aquela
+conversa) pra decidir quantas mensagens são novas, usar diretamente o
+`[N]` que já aparece na sidebar (`UNREAD_MARKER_RE`) — é o próprio
+WeChat dizendo quantas são não lidas, não depende de estado local
+sobrevivendo entre execuções. `list_unread_sessions` mudou de
+`list[str]` pra `list[tuple[str, int]]` (nome, contagem não lida);
+`watch_messages.py` usa `messages[-unread_count:]` em vez de comparar
+com uma contagem anterior guardada em memória. Único chamador afetado
+era o próprio `watch_messages.py` (confirmado por busca no repo).
+
+**Encerramento imediato ao esvaziar** (ajuste fino depois do 1º teste
+ao vivo bem-sucedido, 2026-07-23): o log mostrou 6s de atraso entre a
+última notificação e o "Encerrando" — o loop, ao achar a lista vazia,
+ainda dormia `WATCH_POLL_INTERVAL_SECONDS` antes de reavaliar o
+timeout. Fix: `break` imediato quando `list_unread_sessions()` volta
+vazia, em vez de dormir e continuar. Timeout/teto de mensagens
+continuam como rede de segurança se as notificações não pararem de
+chegar. `WATCH_POLL_INTERVAL_SECONDS` removido (ficou sem uso).
+
+**Confirmado ao vivo (2026-07-23)**, 2 notificações simultâneas (Felipe
+e Victor Silva), lidas e logadas corretamente, script encerrando sem
+atraso perceptível depois da última. Teste pytest de caracterização:
+`tests/pytests/test_watch_messages.py` (5 casos — lista vazia encerra
+sem sleep, usa `[N]` em vez de histórico completo, múltiplas pendentes
+processadas em ordem, teto de mensagens corta com pendente sobrando,
+timeout corta com pendente sobrando). Precisou inserir `tests/manual/`
+no `sys.path` dentro do próprio arquivo de teste (nenhum outro script
+de `tests/manual/` tinha teste até agora, sem precedente no
+`conftest.py` pra isso) — se mais scripts manuais ganharem teste,
+considerar centralizar esse path-hack no `conftest.py`.
 
 ## Próximos passos concretos (ordem sugerida pra retomar)
 
-1. Re-testar `watch_messages.py` ao vivo com os 2 fixes acima, depois
-   escrever o teste pytest.
-2. `start_group.py` com 2+ nomes — bloqueado por enquanto, falta um
+1. `start_group.py` com 2+ nomes — bloqueado por enquanto, falta um
    segundo celular pra testar.
-3. Bug de espaço em nome/caminho passado por linha de comando: **não é
+2. Bug de espaço em nome/caminho passado por linha de comando: **não é
    bug de código, é uso do cmd do Windows** — `\"` no fim de um argumento
    entre aspas vira aspas literal dentro do valor, não fecha a string.
    Nunca terminar um argumento quotado com `\` antes da aspas de
    fechamento (afetou `send_file.py`/`download_last_file.py` várias
    vezes na sessão de 2026-07-21).
+3. Itens sem prazo definido (ver `docs/README.md` > "Pendências"):
+   confirmar cobertura WeCom vs. WeChat pessoal, testar estabilidade do
+   RDP em uso prolongado, avaliar risco de detecção de login por
+   região/IP antes de qualquer teste com conta real de produção.
 
 ## Performance — não urgente, olhar no futuro
 
