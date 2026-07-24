@@ -36,3 +36,4 @@ NOT_DOWNLOADED_MARKER = "Not Downloaded"
 UNREAD_MARKER_RE = re.compile(r"^\[(\d+)\]$")  # contagem de não lidas vem como linha de texto
 FIND_TIMEOUT_SECONDS = 15.0  # generoso pq o servidor é lento pra chamadas UIA
 FIND_POLL_INTERVAL_SECONDS = 0.5
+FIND_RETRIES = 5  # tentativas com FIND_POLL_INTERVAL_SECONDS entre elas, sem timeout de tempo

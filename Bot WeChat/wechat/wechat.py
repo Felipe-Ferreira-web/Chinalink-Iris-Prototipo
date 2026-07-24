@@ -23,6 +23,7 @@ from .setup_wechat import (
     FILE_BUBBLE_CLASS,
     FILE_NAME_FIELD_LABEL,
     FIND_POLL_INTERVAL_SECONDS,
+    FIND_RETRIES,
     FIND_TIMEOUT_SECONDS,
     GROUP_CANCEL_BTN_ID,
     GROUP_CANDIDATES_VIEW_CLASSES,
@@ -140,34 +141,31 @@ def _find_one(
         time.sleep(FIND_POLL_INTERVAL_SECONDS)
 
 
-def _find_direct_child_by_auto_id(window, error_label: str, auto_id: str, timeout: float = FIND_TIMEOUT_SECONDS):
+def _find_direct_child_by_auto_id(window, error_label: str, auto_id: str, retries: int = FIND_RETRIES):
     """Acha filho direto por auto_id, sem descer na árvore (evita ciclo UIA)."""
-    deadline = time.monotonic() + timeout
-    while True:
+    for attempt in range(retries):
         for child in window.children():
             if child.element_info.automation_id == auto_id:
                 return child
-        if time.monotonic() >= deadline:
-            raise RuntimeError(f"{error_label} não encontrado após {timeout}s (auto_id={auto_id!r}).")
-        time.sleep(FIND_POLL_INTERVAL_SECONDS)
+        if attempt < retries - 1:
+            time.sleep(FIND_POLL_INTERVAL_SECONDS)
+    raise RuntimeError(f"{error_label} não encontrado após {retries} tentativas (auto_id={auto_id!r}).")
 
 
-def _find_direct_child_by_class(window, error_label: str, class_names: tuple[str, ...], timeout: float = FIND_TIMEOUT_SECONDS):
+def _find_direct_child_by_class(window, error_label: str, class_names: tuple[str, ...], retries: int = FIND_RETRIES):
     """Acha filho direto por classe, sem descer na árvore (evita ciclo UIA)."""
-    deadline = time.monotonic() + timeout
-    while True:
+    for attempt in range(retries):
         for child in window.children():
             if child.element_info.class_name in class_names:
                 return child
-        if time.monotonic() >= deadline:
-            raise RuntimeError(f"{error_label} não encontrado após {timeout}s (class_names={class_names!r}).")
-        time.sleep(FIND_POLL_INTERVAL_SECONDS)
+        if attempt < retries - 1:
+            time.sleep(FIND_POLL_INTERVAL_SECONDS)
+    raise RuntimeError(f"{error_label} não encontrado após {retries} tentativas (class_names={class_names!r}).")
 
 
-def _find_group_candidate(wrapper, name: str, timeout: float = FIND_TIMEOUT_SECONDS):
+def _find_group_candidate(wrapper, name: str, retries: int = FIND_RETRIES):
     """Espera a lista filtrada renderizar e acha o CheckBox do contato."""
-    deadline = time.monotonic() + timeout
-    while True:
+    for attempt in range(retries):
         picker_view = _find_direct_child_by_class(wrapper, "Lista de candidatos", GROUP_CANDIDATES_VIEW_CLASSES)
         matches = [
             m for m in picker_view.descendants(title=name, control_type="CheckBox")
@@ -175,9 +173,9 @@ def _find_group_candidate(wrapper, name: str, timeout: float = FIND_TIMEOUT_SECO
         ]
         if matches:
             return matches[0]
-        if time.monotonic() >= deadline:
-            return None
-        time.sleep(FIND_POLL_INTERVAL_SECONDS)
+        if attempt < retries - 1:
+            time.sleep(FIND_POLL_INTERVAL_SECONDS)
+    return None
 
 
 def _set_clipboard_text(text: str) -> None:
@@ -220,7 +218,7 @@ def list_unread_sessions(window) -> list[tuple[str, int]]:
     return sessions
 
 
-def get_current_chat_name(window, retries: int = 5) -> str | None:
+def get_current_chat_name(window, retries: int = FIND_RETRIES) -> str | None:
     """Função para pegar o nome da conversa aberta (poucas tentativas, não tempo)."""
     for attempt in range(retries):
         for item in window.descendants(control_type="Text"):
