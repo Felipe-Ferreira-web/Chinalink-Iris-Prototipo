@@ -25,6 +25,7 @@ from .setup_wechat import (
     FIND_POLL_INTERVAL_SECONDS,
     FIND_TIMEOUT_SECONDS,
     GROUP_CONTACT_ROW_CLASS,
+    GROUP_SEARCH_RESULT_ROW_CLASS,
     MESSAGE_TEXT_CLASS,
     MESSAGES_BUTTON_TEXT,
     NOT_DOWNLOADED_MARKER,
@@ -419,9 +420,10 @@ def start_group_chat(main_window, contact_names: list[str]) -> str | None:
         search_field.type_keys("^v", pause=0.05)
         _random_delay()
 
+        # Busca filtra pra um container diferente (SearchContactCellView).
         matches = [
             m for m in dialog.descendants(title=name, control_type="CheckBox")
-            if m.element_info.class_name == GROUP_CONTACT_ROW_CLASS
+            if m.element_info.class_name in (GROUP_CONTACT_ROW_CLASS, GROUP_SEARCH_RESULT_ROW_CLASS)
         ]
         if not matches:
             cancel_button = _find_one(
